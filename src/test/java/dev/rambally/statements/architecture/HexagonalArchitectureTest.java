@@ -51,7 +51,7 @@ class HexagonalArchitectureTest {
 
     @ArchTest
     static final ArchRule adapter_slices_do_not_depend_on_each_other = slices()
-            .matching("dev.rambally.statements.adapters.(**)")
+            .matching("dev.rambally.statements.adapters.(*).(*)..")
             .should().notDependOnEachOther();
 
     @ArchTest

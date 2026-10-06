@@ -9,6 +9,10 @@ spring:
     enabled: true
     locations: classpath:db/migration/common,classpath:db/migration/{vendor}
     validate-on-migrate: true
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 11MB
 
 server:
   shutdown: graceful
@@ -16,6 +20,8 @@ server:
   tomcat:
     accesslog:
       enabled: false
+    # Let Tomcat drain an oversize upload so the client receives the 413 instead of a connection reset.
+    max-swallow-size: 12MB
   error:
     whitelabel:
       enabled: false

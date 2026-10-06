@@ -12,6 +12,8 @@ import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
 
+import dev.rambally.statements.adapters.in.dev.DevTokenSettings;
+
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
@@ -48,6 +50,12 @@ public class DevJwtConfig {
                 .keyID(UUID.randomUUID().toString())
                 .build();
         return new NimbusJwtEncoder(new ImmutableJWKSet<>(new JWKSet(jwk)));
+    }
+
+    @Bean
+    DevTokenSettings devTokenSettings(AppProperties properties) {
+        return new DevTokenSettings(properties.security().devIssuer(), properties.security().audience(),
+                properties.security().rolesClaim());
     }
 
     @Bean
