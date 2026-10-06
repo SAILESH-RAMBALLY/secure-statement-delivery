@@ -3,6 +3,7 @@ package dev.rambally.statements.bootstrap;
 import java.net.URI;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -26,7 +27,8 @@ public record AppProperties(
         @Valid @NotNull Crypto crypto,
         @Valid @NotNull StatementLimits statement,
         @Valid @NotNull Link link,
-        @Valid @NotNull Download download) {
+        @Valid @NotNull Download download,
+        @Valid @NotNull Demo demo) {
 
     public record Security(
             @NotBlank String rolesClaim,
@@ -50,5 +52,15 @@ public record AppProperties(
 
     /** Bulkhead size: each in-flight download may hold ~2x the statement size limit in memory. */
     public record Download(@Min(1) @Max(256) int maxConcurrent) {
+    }
+
+    /** Demo profile seed data; empty outside the demo profile. */
+    public record Demo(@Valid @NotNull List<DemoCustomer> customers) {
+        public Demo {
+            customers = customers == null ? List.of() : List.copyOf(customers);
+        }
+    }
+
+    public record DemoCustomer(@NotBlank String customerId, @NotBlank String accountNumber, @Min(1) @Max(12) int months) {
     }
 }

@@ -73,6 +73,8 @@ app:
     max-downloads: ${APP_LINK_MAX_DOWNLOADS:1}
   download:
     max-concurrent: ${APP_DOWNLOAD_MAX_CONCURRENT:16}
+  demo:
+    customers: []
 
 logging:
   level:

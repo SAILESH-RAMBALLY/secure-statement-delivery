@@ -1,0 +1,10 @@
+# Demo data: a few generated statements per customer for the months preceding the current one.
+app:
+  demo:
+    customers:
+      - customer-id: C-1001
+        account-number: "1234567890"
+        months: 3
+      - customer-id: C-2002
+        account-number: "9876543210"
+        months: 2

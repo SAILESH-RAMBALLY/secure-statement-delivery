@@ -57,4 +57,9 @@ public class AdapterConfig {
     NotificationPort notificationPort() {
         return new LoggingNotificationAdapter();
     }
+
+    @Bean
+    StatementPdfGenerator statementPdfGenerator() {
+        return new StatementPdfGenerator();
+    }
 }
