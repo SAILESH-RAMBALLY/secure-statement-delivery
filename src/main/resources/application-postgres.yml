@@ -1,0 +1,7 @@
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/statements}
+    username: ${SPRING_DATASOURCE_USERNAME:statements}
+    password: ${SPRING_DATASOURCE_PASSWORD:statements}
+    hikari:
+      maximum-pool-size: 10

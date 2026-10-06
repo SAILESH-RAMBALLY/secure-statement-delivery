@@ -1,0 +1,11 @@
+target/
+data/
+.env
+.git/
+.github/
+.idea/
+*.iml
+docs/
+scripts/
+README.md
+LICENSE

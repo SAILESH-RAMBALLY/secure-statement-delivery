@@ -1,0 +1,5 @@
+# Development conveniences: RSA token issuer at /dev/token and open Swagger UI.
+# Every item here is refused by the prod profile guard.
+springdoc:
+  api-docs:
+    enabled: true

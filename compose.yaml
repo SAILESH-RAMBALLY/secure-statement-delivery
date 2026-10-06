@@ -1,0 +1,44 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: statements
+      POSTGRES_USER: statements
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-statements}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U statements -d statements"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: postgres,dev,demo
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/statements
+      SPRING_DATASOURCE_USERNAME: statements
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-statements}
+      APP_PUBLIC_BASE_URL: ${APP_PUBLIC_BASE_URL:-http://localhost:8080}
+      APP_CRYPTO_KEK: ${APP_CRYPTO_KEK:-}
+      APP_CRYPTO_KEK_ID: ${APP_CRYPTO_KEK_ID:-local-kek-v1}
+    volumes:
+      - statements-data:/data
+    mem_limit: 1g
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  pg-data:
+  statements-data:

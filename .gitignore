@@ -1,0 +1,23 @@
+# Build
+target/
+*.class
+*.log
+
+# Local runtime data (H2 file DB, stored statements)
+data/
+
+# Secrets
+.env
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.settings/
+.project
+.classpath
+.factorypath
+
+# OS
+.DS_Store
+Thumbs.db
