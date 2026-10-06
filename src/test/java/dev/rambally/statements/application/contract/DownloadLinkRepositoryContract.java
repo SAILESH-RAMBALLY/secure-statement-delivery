@@ -133,6 +133,20 @@ public abstract class DownloadLinkRepositoryContract {
     }
 
     @Test
+    void revoke_is_a_conditional_update_that_returns_false_the_second_time() {
+        DownloadLink link = link(FixedTokenGenerator.tokenNumber(5).hash(), NOW);
+        links().save(link);
+
+        assertThat(links().revoke(link.id(), NOW.plusSeconds(5))).isTrue();
+        assertThat(links().revoke(link.id(), NOW.plusSeconds(50))).isFalse();
+        assertThat(links().revoke(LinkId.newId(), NOW)).isFalse();
+
+        DownloadLink after = links().findById(link.id()).orElseThrow();
+        assertThat(after.revokedAt()).isEqualTo(NOW.plusSeconds(5));
+        assertThat(links().tryConsume(link.id(), NOW.plusSeconds(6))).isFalse();
+    }
+
+    @Test
     void revoked_state_round_trips() {
         DownloadLink revoked = link(FixedTokenGenerator.tokenNumber(6).hash(), NOW).revoke(NOW.plusSeconds(5));
 

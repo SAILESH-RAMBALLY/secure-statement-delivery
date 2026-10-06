@@ -68,6 +68,16 @@ public final class InMemoryDownloadLinkRepository implements DownloadLinkReposit
         return true;
     }
 
+    @Override
+    public synchronized boolean revoke(LinkId id, Instant now) {
+        DownloadLink link = byId.get(id);
+        if (link == null || link.revokedAt() != null) {
+            return false;
+        }
+        byId.put(id, link.revoke(now));
+        return true;
+    }
+
     public int size() {
         return byId.size();
     }

@@ -3,15 +3,19 @@ package dev.rambally.statements.bootstrap;
 import java.time.Clock;
 
 import dev.rambally.statements.application.IssueDownloadLinkService;
+import dev.rambally.statements.application.ListLinksService;
 import dev.rambally.statements.application.ListStatementsService;
 import dev.rambally.statements.application.PublicBaseUrl;
 import dev.rambally.statements.application.RedeemDownloadLinkService;
+import dev.rambally.statements.application.RevokeDownloadLinkService;
 import dev.rambally.statements.application.StatementSizePolicy;
 import dev.rambally.statements.application.UploadStatementService;
 import dev.rambally.statements.application.crypto.AesGcmEnvelopeCipher;
 import dev.rambally.statements.application.port.in.IssueDownloadLinkUseCase;
+import dev.rambally.statements.application.port.in.ListLinksUseCase;
 import dev.rambally.statements.application.port.in.ListStatementsUseCase;
 import dev.rambally.statements.application.port.in.RedeemDownloadLinkUseCase;
+import dev.rambally.statements.application.port.in.RevokeDownloadLinkUseCase;
 import dev.rambally.statements.application.port.in.UploadStatementUseCase;
 import dev.rambally.statements.application.port.out.AuditLog;
 import dev.rambally.statements.application.port.out.DownloadLinkRepository;
@@ -71,5 +75,15 @@ public class UseCaseConfig {
     RedeemDownloadLinkUseCase redeemDownloadLinkUseCase(DownloadLinkRepository links, StatementRepository statements,
             StatementStorage storage, KeyProvider keyProvider, AesGcmEnvelopeCipher cipher, AuditLog audit, Clock clock) {
         return new RedeemDownloadLinkService(links, statements, storage, keyProvider, cipher, audit, clock);
+    }
+
+    @Bean
+    ListLinksUseCase listLinksUseCase(StatementRepository statements, DownloadLinkRepository links, Clock clock) {
+        return new ListLinksService(statements, links, clock);
+    }
+
+    @Bean
+    RevokeDownloadLinkUseCase revokeDownloadLinkUseCase(DownloadLinkRepository links, AuditLog audit, Clock clock) {
+        return new RevokeDownloadLinkService(links, audit, clock);
     }
 }

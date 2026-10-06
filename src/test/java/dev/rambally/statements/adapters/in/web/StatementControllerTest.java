@@ -17,10 +17,13 @@ import dev.rambally.statements.application.Principal;
 import dev.rambally.statements.application.port.in.IssueDownloadLinkUseCase;
 import dev.rambally.statements.application.port.in.IssueLinkCommand;
 import dev.rambally.statements.application.port.in.IssuedLink;
+import dev.rambally.statements.application.port.in.LinkSummary;
+import dev.rambally.statements.application.port.in.ListLinksUseCase;
 import dev.rambally.statements.application.port.in.ListStatementsUseCase;
 import dev.rambally.statements.application.port.in.StatementSummary;
 import dev.rambally.statements.domain.CustomerId;
 import dev.rambally.statements.domain.LinkId;
+import dev.rambally.statements.domain.LinkStatus;
 import dev.rambally.statements.domain.StatementId;
 import dev.rambally.statements.domain.StatementPeriod;
 import dev.rambally.statements.domain.exception.StatementNotFoundException;
@@ -68,11 +71,27 @@ class StatementControllerTest {
         }
     }
 
+    static final class StubLinks implements ListLinksUseCase {
+        @Override
+        public List<LinkSummary> linksFor(StatementId statementId, Principal actor) {
+            if (!statementId.equals(OWNED) || !actor.customerId().equals(new CustomerId("C-1001"))) {
+                throw new StatementNotFoundException(statementId);
+            }
+            return List.of(new LinkSummary(LINK, LinkStatus.EXHAUSTED, Instant.parse("2026-10-06T10:00:00Z"),
+                    Instant.parse("2026-10-07T10:00:00Z"), 1, 1));
+        }
+    }
+
     @TestConfiguration(proxyBeanMethods = false)
     static class Stubs {
         @Bean
         StubIssue issueDownloadLinkUseCase() {
             return new StubIssue();
+        }
+
+        @Bean
+        StubLinks listLinksUseCase() {
+            return new StubLinks();
         }
 
         @Bean
@@ -147,5 +166,19 @@ class StatementControllerTest {
                 .andExpect(status().isBadRequest());
 
         assertThat(list.last).isNull();
+    }
+
+    @Test
+    void list_links_returns_status_and_counts_only_and_404_for_not_owned() throws Exception {
+        mvc.perform(get("/api/statements/" + OWNED + "/links").with(customer("C-1001")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].linkId").value(LINK.toString()))
+                .andExpect(jsonPath("$[0].status").value("EXHAUSTED"))
+                .andExpect(jsonPath("$[0].downloadCount").value(1))
+                .andExpect(jsonPath("$[0].maxDownloads").value(1))
+                .andExpect(content().string(Matchers.not(Matchers.containsString("hash"))));
+
+        mvc.perform(get("/api/statements/" + OWNED + "/links").with(customer("C-2002")))
+                .andExpect(status().isNotFound());
     }
 }

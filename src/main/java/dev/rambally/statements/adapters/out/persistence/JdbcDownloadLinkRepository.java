@@ -85,6 +85,15 @@ public class JdbcDownloadLinkRepository implements DownloadLinkRepository {
         return updated == 1;
     }
 
+    @Override
+    public boolean revoke(LinkId id, Instant now) {
+        int updated = jdbc.sql("UPDATE download_link SET revoked_at = :now WHERE id = :id AND revoked_at IS NULL")
+                .param("id", id.value())
+                .param("now", JdbcTimes.toDb(now))
+                .update();
+        return updated == 1;
+    }
+
     private static DownloadLink toLink(ResultSet rs) throws SQLException {
         return new DownloadLink(
                 new LinkId(rs.getObject("id", UUID.class)),

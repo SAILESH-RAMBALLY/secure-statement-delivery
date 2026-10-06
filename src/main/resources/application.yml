@@ -45,6 +45,10 @@ management:
         enabled: true
       show-components: never
       show-details: never
+      group:
+        readiness:
+          # The container is only "ready" when the database answers; liveness stays independent of it.
+          include: readinessState,db
 
 springdoc:
   swagger-ui:

@@ -4,11 +4,13 @@ import java.net.URI;
 import java.util.List;
 
 import dev.rambally.statements.adapters.in.web.dto.IssueLinkResponse;
+import dev.rambally.statements.adapters.in.web.dto.LinkSummaryResponse;
 import dev.rambally.statements.adapters.in.web.dto.StatementSummaryResponse;
 import dev.rambally.statements.application.Principal;
 import dev.rambally.statements.application.port.in.IssueDownloadLinkUseCase;
 import dev.rambally.statements.application.port.in.IssueLinkCommand;
 import dev.rambally.statements.application.port.in.IssuedLink;
+import dev.rambally.statements.application.port.in.ListLinksUseCase;
 import dev.rambally.statements.application.port.in.ListStatementsUseCase;
 import dev.rambally.statements.domain.StatementId;
 
@@ -32,10 +34,12 @@ public class StatementController {
 
     private final ListStatementsUseCase list;
     private final IssueDownloadLinkUseCase issue;
+    private final ListLinksUseCase links;
 
-    public StatementController(ListStatementsUseCase list, IssueDownloadLinkUseCase issue) {
+    public StatementController(ListStatementsUseCase list, IssueDownloadLinkUseCase issue, ListLinksUseCase links) {
         this.list = list;
         this.issue = issue;
+        this.links = links;
     }
 
     @Operation(summary = "List my statements", description = "Newest period first. Identity comes from the JWT subject; "
@@ -59,5 +63,13 @@ public class StatementController {
         IssuedLink issued = issue.issue(new IssueLinkCommand(StatementId.of(statementId), actor));
         return ResponseEntity.created(URI.create("/api/links/" + issued.linkId()))
                 .body(IssueLinkResponse.of(issued));
+    }
+
+    @Operation(summary = "List the links issued for one of my statements",
+            description = "Status, timestamps and counts only; tokens and hashes are never returned.")
+    @ApiResponse(responseCode = "404", description = "Statement unknown or not yours (indistinguishable)")
+    @GetMapping("/{statementId}/links")
+    public List<LinkSummaryResponse> listLinks(@PathVariable("statementId") String statementId, Principal actor) {
+        return links.linksFor(StatementId.of(statementId), actor).stream().map(LinkSummaryResponse::of).toList();
     }
 }

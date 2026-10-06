@@ -28,4 +28,7 @@ public interface DownloadLinkRepository {
      * under concurrency; {@code now} comes from the application clock, never the database clock.
      */
     boolean tryConsume(LinkId id, Instant now);
+
+    /** Sets revoked_at only if not already revoked. True iff exactly one row changed. */
+    boolean revoke(LinkId id, Instant now);
 }
