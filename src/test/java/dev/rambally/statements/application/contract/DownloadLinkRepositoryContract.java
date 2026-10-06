@@ -93,6 +93,46 @@ public abstract class DownloadLinkRepositoryContract {
     }
 
     @Test
+    void try_consume_increments_once_and_returns_true_for_a_redeemable_link() {
+        DownloadLink link = link(FixedTokenGenerator.tokenNumber(7).hash(), NOW);
+        links().save(link);
+
+        assertThat(links().tryConsume(link.id(), NOW.plusSeconds(10))).isTrue();
+
+        DownloadLink after = links().findById(link.id()).orElseThrow();
+        assertThat(after.downloadCount()).isEqualTo(1);
+        assertThat(after.redeemability(NOW.plusSeconds(10))).isEqualTo(dev.rambally.statements.domain.Redeemability.EXHAUSTED);
+        assertThat(links().tryConsume(link.id(), NOW.plusSeconds(11))).isFalse();
+        assertThat(links().findById(link.id()).orElseThrow().downloadCount()).isEqualTo(1);
+    }
+
+    @Test
+    void try_consume_returns_false_when_expired_revoked_or_unknown() {
+        DownloadLink fresh = link(FixedTokenGenerator.tokenNumber(8).hash(), NOW);
+        links().save(fresh);
+        DownloadLink revoked = link(FixedTokenGenerator.tokenNumber(9).hash(), NOW).revoke(NOW.plusSeconds(1));
+        links().save(revoked);
+
+        assertThat(links().tryConsume(fresh.id(), fresh.expiresAt())).isFalse();
+        assertThat(links().tryConsume(fresh.id(), fresh.expiresAt().minusMillis(1))).isTrue();
+        assertThat(links().tryConsume(revoked.id(), NOW.plusSeconds(2))).isFalse();
+        assertThat(links().tryConsume(LinkId.newId(), NOW)).isFalse();
+    }
+
+    @Test
+    void try_consume_honours_max_downloads_greater_than_one() {
+        DownloadLink link = DownloadLink.issue(LinkId.newId(), statement, FixedTokenGenerator.tokenNumber(0).hash(),
+                new LinkPolicy(Duration.ofHours(1), 3), NOW);
+        links().save(link);
+
+        assertThat(links().tryConsume(link.id(), NOW)).isTrue();
+        assertThat(links().tryConsume(link.id(), NOW)).isTrue();
+        assertThat(links().tryConsume(link.id(), NOW)).isTrue();
+        assertThat(links().tryConsume(link.id(), NOW)).isFalse();
+        assertThat(links().findById(link.id()).orElseThrow().downloadCount()).isEqualTo(3);
+    }
+
+    @Test
     void revoked_state_round_trips() {
         DownloadLink revoked = link(FixedTokenGenerator.tokenNumber(6).hash(), NOW).revoke(NOW.plusSeconds(5));
 

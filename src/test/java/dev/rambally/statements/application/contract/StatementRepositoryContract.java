@@ -45,7 +45,7 @@ public abstract class StatementRepositoryContract {
         reset();
     }
 
-    protected static Statement statement(String customer, String account, String period, Instant createdAt) {
+    public static Statement statement(String customer, String account, String period, Instant createdAt) {
         StatementId id = StatementId.newId();
         byte[] wrapped = new byte[48];
         byte[] dekIv = new byte[12];

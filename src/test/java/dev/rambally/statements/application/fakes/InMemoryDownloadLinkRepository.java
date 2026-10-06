@@ -1,5 +1,6 @@
 package dev.rambally.statements.application.fakes;
 
+import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -9,6 +10,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import dev.rambally.statements.application.port.out.DownloadLinkRepository;
 import dev.rambally.statements.domain.DownloadLink;
 import dev.rambally.statements.domain.LinkId;
+import dev.rambally.statements.domain.Redeemability;
 import dev.rambally.statements.domain.StatementId;
 import dev.rambally.statements.domain.TokenHash;
 import dev.rambally.statements.domain.exception.DuplicateTokenHashException;
@@ -16,6 +18,12 @@ import dev.rambally.statements.domain.exception.DuplicateTokenHashException;
 public final class InMemoryDownloadLinkRepository implements DownloadLinkRepository {
 
     private final Map<LinkId, DownloadLink> byId = new ConcurrentHashMap<>();
+    private volatile boolean failNextConsume;
+
+    /** Test hook: make the next tryConsume lose the race even though the pre-check passed. */
+    public void failNextConsume() {
+        this.failNextConsume = true;
+    }
 
     @Override
     public synchronized void save(DownloadLink link) {
@@ -43,6 +51,21 @@ public final class InMemoryDownloadLinkRepository implements DownloadLinkReposit
                 .filter(l -> l.statementId().equals(statementId))
                 .sorted(Comparator.comparing(DownloadLink::issuedAt).reversed())
                 .toList();
+    }
+
+    /** Same predicate as the domain pre-check, applied atomically; mirrors the SQL conditional UPDATE. */
+    @Override
+    public synchronized boolean tryConsume(LinkId id, Instant now) {
+        if (failNextConsume) {
+            failNextConsume = false;
+            return false;
+        }
+        DownloadLink link = byId.get(id);
+        if (link == null || link.redeemability(now) != Redeemability.OK) {
+            return false;
+        }
+        byId.put(id, link.withDownloadCount(link.downloadCount() + 1));
+        return true;
     }
 
     public int size() {

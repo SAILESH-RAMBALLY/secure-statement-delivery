@@ -1,5 +1,6 @@
 package dev.rambally.statements.application.port.out;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
@@ -20,4 +21,11 @@ public interface DownloadLinkRepository {
 
     /** Newest first. */
     List<DownloadLink> findByStatement(StatementId statementId);
+
+    /**
+     * Atomically consume one use: increments the count only if the link is unrevoked, unexpired at
+     * {@code now} and below its maximum. True iff exactly one row changed. This is the single arbiter
+     * under concurrency; {@code now} comes from the application clock, never the database clock.
+     */
+    boolean tryConsume(LinkId id, Instant now);
 }

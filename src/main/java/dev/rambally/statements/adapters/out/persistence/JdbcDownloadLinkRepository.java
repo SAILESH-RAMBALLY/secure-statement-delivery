@@ -2,6 +2,7 @@ package dev.rambally.statements.adapters.out.persistence;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -72,6 +73,16 @@ public class JdbcDownloadLinkRepository implements DownloadLinkRepository {
                 .param("statement_id", statementId.value())
                 .query((rs, rowNum) -> toLink(rs))
                 .list();
+    }
+
+    @Override
+    public boolean tryConsume(LinkId id, Instant now) {
+        int updated = jdbc.sql("UPDATE download_link SET download_count = download_count + 1, last_downloaded_at = :now "
+                        + "WHERE id = :id AND revoked_at IS NULL AND expires_at > :now AND download_count < max_downloads")
+                .param("id", id.value())
+                .param("now", JdbcTimes.toDb(now))
+                .update();
+        return updated == 1;
     }
 
     private static DownloadLink toLink(ResultSet rs) throws SQLException {
