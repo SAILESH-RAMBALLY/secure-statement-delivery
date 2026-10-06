@@ -90,9 +90,9 @@ class JdbcAuditLogTest {
         LinkId linkId = LinkId.newId();
         StatementId statementId = StatementId.newId();
         auditLog.record(new AuditEvent(Instant.parse("2026-10-06T10:00:00Z"), AuditEventType.LINK_ISSUED, null, "cafebabe",
-                linkId, statementId, new CustomerId("C-1001"), null, null));
+                linkId, statementId, new CustomerId("C-1001"), new CustomerId("ops-admin"), null, null));
 
-        var row = jdbc.sql("SELECT event_type, outcome, token_hash_prefix, link_id, statement_id, customer_id, client_ip, user_agent "
+        var row = jdbc.sql("SELECT event_type, outcome, token_hash_prefix, link_id, statement_id, customer_id, actor_id, client_ip, user_agent "
                 + "FROM download_audit").query().singleRow();
 
         assertThat(row.get("event_type")).isEqualTo("LINK_ISSUED");
@@ -101,7 +101,20 @@ class JdbcAuditLogTest {
         assertThat(row.get("link_id").toString()).isEqualTo(linkId.toString());
         assertThat(row.get("statement_id").toString()).isEqualTo(statementId.toString());
         assertThat(row.get("customer_id")).isEqualTo("C-1001");
+        assertThat(row.get("actor_id")).isEqualTo("ops-admin");
         assertThat(row.get("client_ip")).isNull();
+    }
+
+    @Test
+    void oversize_client_address_and_user_agent_are_truncated_rather_than_dropping_the_row() {
+        String longIp = "fe80:0000:0000:0000:0000:0000:0000:0001%enx0123456789ab";
+        auditLog.record(AuditEvent.redemption(Instant.parse("2026-10-06T10:00:00Z"), RedemptionOutcome.UNKNOWN_TOKEN,
+                "deadbeef", null, longIp, "x".repeat(400)));
+
+        var row = jdbc.sql("SELECT client_ip, user_agent FROM download_audit").query().singleRow();
+        assertThat(((String) row.get("client_ip"))).hasSize(45).startsWith("fe80:");
+        assertThat(((String) row.get("user_agent"))).hasSize(255);
+        assertThat(registry.counter("audit.write.failures").count()).isZero();
     }
 
     @Test

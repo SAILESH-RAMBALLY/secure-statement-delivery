@@ -90,9 +90,13 @@ class LocalKekKeyProviderTest {
     }
 
     @Test
-    void configuring_the_dev_key_explicitly_is_detected() {
+    void configuring_the_dev_key_explicitly_is_detected_and_refused_unless_fallback_is_allowed() {
         LocalKekKeyProvider explicitDev = LocalKekKeyProvider.fromConfig(LocalKekKeyProvider.DEV_KEK_BASE64, "cfg", true);
-
         assertThat(explicitDev.usingDevFallback()).isTrue();
+
+        assertThatThrownBy(() -> LocalKekKeyProvider.fromConfig(LocalKekKeyProvider.DEV_KEK_BASE64, "cfg", false))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("development key");
+        assertThatThrownBy(() -> LocalKekKeyProvider.fromConfig(LocalKekKeyProvider.DEV_KEK_BASE64.replace("=", ""), "cfg", false))
+                .as("non-canonical spelling of the same bytes").isInstanceOf(IllegalArgumentException.class);
     }
 }

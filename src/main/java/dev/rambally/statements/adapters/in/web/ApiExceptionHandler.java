@@ -58,9 +58,16 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         };
     }
 
-    @ExceptionHandler(IllegalArgumentException.class)
-    ProblemDetail handleIllegalArgument(IllegalArgumentException ex, HttpServletRequest request) {
-        return problem(HttpStatus.BAD_REQUEST, "Invalid request", request);
+    /**
+     * Anything not mapped above is a server-side defect: logged with its class and message (which never
+     * contain client input by construction of the domain exceptions) and answered with a fixed 500 body, so no
+     * request ever reaches Boot's default error page.
+     */
+    @ExceptionHandler(Exception.class)
+    ProblemDetail handleUnexpected(Exception ex, HttpServletRequest request) {
+        log.error("unhandled {} while serving {} {}", ex.getClass().getSimpleName(), request.getMethod(),
+                instanceFor(request.getRequestURI()), ex);
+        return problem(HttpStatus.INTERNAL_SERVER_ERROR, "Request failed", request);
     }
 
     @ExceptionHandler(InvalidPrincipalException.class)

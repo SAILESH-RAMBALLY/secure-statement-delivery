@@ -19,34 +19,45 @@ for _ in $(seq 1 60); do
 done
 curl -fs "$BASE_URL/actuator/health"; echo
 
+# Unique identities per run so the script can be re-run against a persistent instance without a 409.
+RUN_ID="$(date -u +%s)"
+CUSTOMER_ID="C-smoke-$RUN_ID"
+ACCOUNT="9${RUN_ID: -9}"
+
 step "Minting tokens (dev profile)"
-ADMIN=$(curl -fs -X POST "$BASE_URL/dev/token" -H 'Content-Type: application/json' \
+ADMIN=$(curl -fsS -X POST "$BASE_URL/dev/token" -H 'Content-Type: application/json' \
   -d '{"subject":"ops-admin","roles":["ADMIN"]}' | json '["token"]')
-CUSTOMER=$(curl -fs -X POST "$BASE_URL/dev/token" -H 'Content-Type: application/json' \
-  -d '{"subject":"C-9009","roles":["CUSTOMER"]}' | json '["token"]')
+CUSTOMER=$(curl -fsS -X POST "$BASE_URL/dev/token" -H 'Content-Type: application/json' \
+  -d "{\"subject\":\"$CUSTOMER_ID\",\"roles\":[\"CUSTOMER\"]}" | json '["token"]')
 
 step "Uploading a statement as ops-admin"
 printf '%%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%%%EOF\n' > "$WORK/statement.pdf"
 PERIOD="$(date -u +%Y-%m)"
-STATEMENT_ID=$(curl -fs -X POST "$BASE_URL/api/admin/statements" -H "Authorization: Bearer $ADMIN" \
-  -F "file=@$WORK/statement.pdf;type=application/pdf" -F customerId=C-9009 -F accountNumber=9009009009 -F "period=$PERIOD" \
+STATEMENT_ID=$(curl -fsS -X POST "$BASE_URL/api/admin/statements" -H "Authorization: Bearer $ADMIN" \
+  -F "file=@$WORK/statement.pdf;type=application/pdf" -F "customerId=$CUSTOMER_ID" -F "accountNumber=$ACCOUNT" -F "period=$PERIOD" \
   | json '["statementId"]')
 echo "statementId=$STATEMENT_ID"
 
-step "Listing statements as C-9009"
-curl -fs "$BASE_URL/api/statements" -H "Authorization: Bearer $CUSTOMER" | json '[0]["accountNumber"]'
+step "Listing statements as $CUSTOMER_ID"
+LISTED=$(curl -fsS "$BASE_URL/api/statements" -H "Authorization: Bearer $CUSTOMER" | json '[0]["statementId"]')
+echo "listed=$LISTED"
+[ "$LISTED" = "$STATEMENT_ID" ]
 
 step "Issuing a download link"
-ISSUE=$(curl -fs -X POST "$BASE_URL/api/statements/$STATEMENT_ID/links" -H "Authorization: Bearer $CUSTOMER")
+ISSUE=$(curl -fsS -X POST "$BASE_URL/api/statements/$STATEMENT_ID/links" -H "Authorization: Bearer $CUSTOMER")
 URL=$(echo "$ISSUE" | json '["url"]')
 LINK_ID=$(echo "$ISSUE" | json '["linkId"]')
 TOKEN="${URL##*/}"
 echo "linkId=$LINK_ID"
 
 step "First download: expect 200 and identical bytes"
-curl -fs -o "$WORK/downloaded.pdf" -D "$WORK/headers.txt" "$BASE_URL/download/$TOKEN"
+curl -fsS -o "$WORK/downloaded.pdf" -D "$WORK/headers.txt" "$BASE_URL/download/$TOKEN"
 grep -i 'content-disposition' "$WORK/headers.txt"
-[ "$(sha "$WORK/statement.pdf")" = "$(sha "$WORK/downloaded.pdf")" ] && echo "sha256 matches"
+if [ "$(sha "$WORK/statement.pdf")" = "$(sha "$WORK/downloaded.pdf")" ]; then
+  echo "sha256 matches"
+else
+  echo "sha256 MISMATCH"; exit 1
+fi
 
 step "Second download: expect constant 404"
 CODE=$(curl -s -o "$WORK/second.json" -w '%{http_code}' "$BASE_URL/download/$TOKEN")
@@ -54,21 +65,28 @@ echo "status=$CODE body=$(cat "$WORK/second.json")"
 [ "$CODE" = "404" ]
 
 step "Link listing shows EXHAUSTED"
-curl -fs "$BASE_URL/api/statements/$STATEMENT_ID/links" -H "Authorization: Bearer $CUSTOMER" | json '[0]["status"]'
+STATUS=$(curl -fsS "$BASE_URL/api/statements/$STATEMENT_ID/links" -H "Authorization: Bearer $CUSTOMER" | json '[0]["status"]')
+echo "status=$STATUS"
+[ "$STATUS" = "EXHAUSTED" ]
 
 step "Issue another link, revoke it, expect 404 on download"
-URL2=$(curl -fs -X POST "$BASE_URL/api/statements/$STATEMENT_ID/links" -H "Authorization: Bearer $CUSTOMER" | json '["url"]')
+ISSUE2=$(curl -fsS -X POST "$BASE_URL/api/statements/$STATEMENT_ID/links" -H "Authorization: Bearer $CUSTOMER")
+URL2=$(echo "$ISSUE2" | json '["url"]')
 LINK2="${URL2##*/}"
-LINK2_ID=$(curl -fs "$BASE_URL/api/statements/$STATEMENT_ID/links" -H "Authorization: Bearer $CUSTOMER" | json '[0]["linkId"]')
-curl -fs -X DELETE "$BASE_URL/api/links/$LINK2_ID" -H "Authorization: Bearer $CUSTOMER" -o /dev/null -w 'revoke status=%{http_code}\n'
+LINK2_ID=$(echo "$ISSUE2" | json '["linkId"]')
+CODE=$(curl -sS -X DELETE "$BASE_URL/api/links/$LINK2_ID" -H "Authorization: Bearer $CUSTOMER" -o /dev/null -w '%{http_code}')
+echo "revoke status=$CODE"
+[ "$CODE" = "204" ]
 CODE=$(curl -s -o /dev/null -w '%{http_code}' "$BASE_URL/download/$LINK2")
 echo "download after revoke status=$CODE"
 [ "$CODE" = "404" ]
 
 step "HEAD on a fresh link does not consume it"
-URL3=$(curl -fs -X POST "$BASE_URL/api/statements/$STATEMENT_ID/links" -H "Authorization: Bearer $CUSTOMER" | json '["url"]')
+URL3=$(curl -fsS -X POST "$BASE_URL/api/statements/$STATEMENT_ID/links" -H "Authorization: Bearer $CUSTOMER" | json '["url"]')
 LINK3="${URL3##*/}"
-curl -s -I "$BASE_URL/download/$LINK3" | head -1
+CODE=$(curl -sS -I -o /dev/null -w '%{http_code}' "$BASE_URL/download/$LINK3")
+echo "HEAD status=$CODE"
+[ "$CODE" = "404" ]
 CODE=$(curl -s -o /dev/null -w '%{http_code}' "$BASE_URL/download/$LINK3")
 echo "GET after HEAD status=$CODE"
 [ "$CODE" = "200" ]

@@ -3,8 +3,8 @@ package dev.rambally.statements.domain;
 import java.time.Instant;
 
 /**
- * One append-only audit row. Carries the token hash prefix (never the token), the ids involved, and
- * for redemptions the real outcome that the HTTP response deliberately hides.
+ * One append-only audit row. Carries the token hash prefix (never the token), the ids involved, who acted
+ * (for issue and revoke), and for redemptions the real outcome that the HTTP response deliberately hides.
  */
 public record AuditEvent(
         Instant at,
@@ -14,6 +14,7 @@ public record AuditEvent(
         LinkId linkId,
         StatementId statementId,
         CustomerId customerId,
+        CustomerId actorId,
         String clientIp,
         String userAgent) {
 
@@ -21,16 +22,17 @@ public record AuditEvent(
         Invariants.notNull(at, "at");
         Invariants.notNull(type, "type");
         Invariants.require(type != AuditEventType.REDEMPTION || outcome != null, "redemption events need an outcome");
+        Invariants.require(type == AuditEventType.REDEMPTION || actorId != null, "issue and revoke events need an actor");
     }
 
-    public static AuditEvent linkIssued(Instant at, DownloadLink link) {
+    public static AuditEvent linkIssued(Instant at, DownloadLink link, CustomerId actor) {
         return new AuditEvent(at, AuditEventType.LINK_ISSUED, null, link.tokenHash().prefix(),
-                link.id(), link.statementId(), link.customerId(), null, null);
+                link.id(), link.statementId(), link.customerId(), actor, null, null);
     }
 
-    public static AuditEvent linkRevoked(Instant at, DownloadLink link) {
+    public static AuditEvent linkRevoked(Instant at, DownloadLink link, CustomerId actor) {
         return new AuditEvent(at, AuditEventType.LINK_REVOKED, null, link.tokenHash().prefix(),
-                link.id(), link.statementId(), link.customerId(), null, null);
+                link.id(), link.statementId(), link.customerId(), actor, null, null);
     }
 
     public static AuditEvent redemption(Instant at, RedemptionOutcome outcome, String tokenHashPrefix,
@@ -39,6 +41,6 @@ public record AuditEvent(
                 link == null ? null : link.id(),
                 link == null ? null : link.statementId(),
                 link == null ? null : link.customerId(),
-                clientIp, userAgent);
+                null, clientIp, userAgent);
     }
 }

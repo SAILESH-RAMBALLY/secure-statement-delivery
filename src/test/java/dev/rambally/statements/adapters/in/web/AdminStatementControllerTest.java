@@ -148,7 +148,12 @@ class AdminStatementControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("<script>"))));
 
-        mvc.perform(upload(TestPdfs.minimal()).param("period", "September").with(admin()))
+        mvc.perform(multipart("/api/admin/statements")
+                        .file(new MockMultipartFile("file", "s.pdf", "application/pdf", TestPdfs.minimal()))
+                        .param("customerId", "C-1001")
+                        .param("accountNumber", "1234567890")
+                        .param("period", "September")
+                        .with(admin()))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.detail").value("Statement rejected: BAD_PERIOD"));
     }

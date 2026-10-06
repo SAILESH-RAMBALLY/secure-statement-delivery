@@ -6,6 +6,7 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.micrometer.metrics.test.autoconfigure.AutoConfigureMetrics;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.HttpHeaders;
@@ -18,6 +19,7 @@ import org.springframework.web.client.RestClient;
 /** Health is public (for the container probe); metrics are for operators with the ADMIN role only. */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
+@AutoConfigureMetrics
 class ActuatorExposureTest {
 
     @LocalServerPort
@@ -56,8 +58,9 @@ class ActuatorExposureTest {
         for (String path : List.of("/actuator/metrics", "/actuator/prometheus")) {
             assertThat(get(path, null).getStatusCode()).as(path + " anonymous").isEqualTo(HttpStatus.UNAUTHORIZED);
             assertThat(get(path, customer).getStatusCode()).as(path + " customer").isEqualTo(HttpStatus.FORBIDDEN);
-            assertThat(get(path, admin).getStatusCode().value()).as(path + " admin").isNotIn(401, 403);
+            assertThat(get(path, admin).getStatusCode()).as(path + " admin").isEqualTo(HttpStatus.OK);
         }
+        assertThat(get("/actuator/prometheus", admin).getBody()).contains("# HELP").contains("http_server_requests");
     }
 
     @Test

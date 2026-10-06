@@ -54,8 +54,8 @@ public class AdminStatementController {
             @RequestParam("period") String period,
             Principal actor) {
         UploadStatementCommand command = new UploadStatementCommand(
-                new CustomerId(customerId),
-                new AccountNumber(accountNumber),
+                RequestInputs.parse(() -> new CustomerId(customerId)),
+                RequestInputs.parse(() -> new AccountNumber(accountNumber)),
                 StatementPeriod.parse(period),
                 bytesOf(file),
                 actor);

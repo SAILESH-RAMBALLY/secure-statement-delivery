@@ -8,7 +8,6 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
-import java.util.function.Consumer;
 
 import dev.rambally.statements.application.crypto.AesGcmEnvelopeCipher;
 import dev.rambally.statements.application.fakes.FakeKeyProvider;
@@ -77,14 +76,26 @@ class RedeemDownloadLinkServiceTest {
         statement = statements.findById(id).orElseThrow();
     }
 
-    private DownloadLink issue(Consumer<DownloadLink> noop) {
+    private DownloadLink issue() {
         DownloadLink link = DownloadLink.issue(LinkId.newId(), statement, TOKEN.hash(), POLICY, Fixtures.NOW);
         links.save(link);
         return link;
     }
 
-    private DownloadLink issue() {
-        return issue(l -> { });
+    private DownloadLink saveInState(java.util.function.UnaryOperator<DownloadLink> state) {
+        DownloadLink link = state.apply(DownloadLink.issue(LinkId.newId(), statement, TOKEN.hash(), POLICY, Fixtures.NOW));
+        links.save(link);
+        return link;
+    }
+
+    private void assertAudited(RedemptionOutcome outcome, DownloadLink link) {
+        assertThat(audit.redemptionOutcomes()).containsExactly(outcome);
+        AuditEvent event = audit.events().getFirst();
+        assertThat(event.linkId()).isEqualTo(link.id());
+        assertThat(event.statementId()).isEqualTo(statement.id());
+        assertThat(event.customerId()).isEqualTo(new CustomerId("C-1001"));
+        assertThat(event.tokenHashPrefix()).isEqualTo(TOKEN.hash().prefix());
+        assertThat(event.clientIp()).isEqualTo("203.0.113.7");
     }
 
     @Test
@@ -94,7 +105,7 @@ class RedeemDownloadLinkServiceTest {
         StatementDownload download = service().redeem(TOKEN.value(), CTX);
 
         assertThat(download.pdf()).isEqualTo(pdf);
-        assertThat(download.fileName()).isEqualTo("statement-1234567890-2026-09.pdf");
+        assertThat(download.fileName()).isEqualTo("statement-7890-2026-09.pdf");
         assertThat(links.findById(link.id()).orElseThrow().downloadCount()).isEqualTo(1);
         assertThat(audit.redemptionOutcomes()).containsExactly(RedemptionOutcome.SUCCESS);
         AuditEvent event = audit.events().getFirst();
@@ -150,32 +161,36 @@ class RedeemDownloadLinkServiceTest {
 
     @Test
     void revoked_link_audits_REVOKED() {
-        DownloadLink link = issue();
-        links.save(link.revoke(Fixtures.NOW.plusSeconds(1)));
+        DownloadLink link = saveInState(l -> l.revoke(Fixtures.NOW.plusSeconds(1)));
 
         assertThatThrownBy(() -> service().redeem(TOKEN.value(), CTX))
                 .extracting(e -> ((LinkNotRedeemableException) e).outcome())
                 .isEqualTo(RedemptionOutcome.REVOKED);
+
+        assertAudited(RedemptionOutcome.REVOKED, link);
     }
 
     @Test
     void exhausted_link_audits_EXHAUSTED() {
-        DownloadLink link = issue();
-        links.save(link.withDownloadCount(1));
+        DownloadLink link = saveInState(l -> l.withDownloadCount(1));
 
         assertThatThrownBy(() -> service().redeem(TOKEN.value(), CTX))
                 .extracting(e -> ((LinkNotRedeemableException) e).outcome())
                 .isEqualTo(RedemptionOutcome.EXHAUSTED);
+
+        assertAudited(RedemptionOutcome.EXHAUSTED, link);
     }
 
     @Test
     void lost_race_when_try_consume_returns_false_audits_LOST_RACE() {
-        issue();
+        DownloadLink link = issue();
         links.failNextConsume();
 
         assertThatThrownBy(() -> service().redeem(TOKEN.value(), CTX))
                 .extracting(e -> ((LinkNotRedeemableException) e).outcome())
                 .isEqualTo(RedemptionOutcome.LOST_RACE);
+
+        assertAudited(RedemptionOutcome.LOST_RACE, link);
     }
 
     @Test
@@ -188,6 +203,7 @@ class RedeemDownloadLinkServiceTest {
                 .isEqualTo(RedemptionOutcome.INTEGRITY_FAILED);
 
         assertThat(links.findById(link.id()).orElseThrow().downloadCount()).isZero();
+        assertAudited(RedemptionOutcome.INTEGRITY_FAILED, link);
     }
 
     @Test
@@ -200,13 +216,63 @@ class RedeemDownloadLinkServiceTest {
                 .isEqualTo(RedemptionOutcome.STORAGE_MISSING);
 
         assertThat(links.findById(link.id()).orElseThrow().downloadCount()).isZero();
+        assertAudited(RedemptionOutcome.STORAGE_MISSING, link);
+    }
+
+    @Test
+    void infrastructure_failure_during_lookup_audits_INTERNAL_ERROR_with_the_hash_prefix() {
+        issue();
+        links.failNextFindWith(new IllegalStateException("database unreachable"));
+
+        assertThatThrownBy(() -> service().redeem(TOKEN.value(), CTX))
+                .isInstanceOf(LinkNotRedeemableException.class)
+                .extracting(e -> ((LinkNotRedeemableException) e).outcome())
+                .isEqualTo(RedemptionOutcome.INTERNAL_ERROR);
+
+        AuditEvent event = audit.events().getFirst();
+        assertThat(event.outcome()).isEqualTo(RedemptionOutcome.INTERNAL_ERROR);
+        assertThat(event.tokenHashPrefix()).isEqualTo(TOKEN.hash().prefix());
+        assertThat(event.linkId()).isNull();
+    }
+
+    @Test
+    void infrastructure_failure_during_read_audits_INTERNAL_ERROR_with_the_link_and_does_not_consume() {
+        DownloadLink link = issue();
+        storage.failNextReadWith(new java.io.UncheckedIOException(new java.io.IOException("EIO")));
+
+        assertThatThrownBy(() -> service().redeem(TOKEN.value(), CTX))
+                .extracting(e -> ((LinkNotRedeemableException) e).outcome())
+                .isEqualTo(RedemptionOutcome.INTERNAL_ERROR);
+
+        assertThat(links.findById(link.id()).orElseThrow().downloadCount()).isZero();
+        assertAudited(RedemptionOutcome.INTERNAL_ERROR, link);
     }
 
     @ParameterizedTest
     @EnumSource(value = RedemptionOutcome.class, names = {"SUCCESS"}, mode = EnumSource.Mode.EXCLUDE)
-    void every_failure_is_the_same_exception_type(RedemptionOutcome outcome) {
-        assertThat(new LinkNotRedeemableException(outcome)).isInstanceOf(LinkNotRedeemableException.class);
-        assertThat(new LinkNotRedeemableException(outcome).outcome()).isEqualTo(outcome);
+    void every_failure_reaches_the_caller_as_LinkNotRedeemableException_and_is_audited(RedemptionOutcome outcome) {
+        DownloadLink link = null;
+        String raw = TOKEN.value();
+        switch (outcome) {
+            case MALFORMED_TOKEN -> raw = "nope";
+            case UNKNOWN_TOKEN -> { }
+            case EXPIRED -> link = saveInState(l -> l);
+            case REVOKED -> link = saveInState(l -> l.revoke(Fixtures.NOW.plusSeconds(1)));
+            case EXHAUSTED -> link = saveInState(l -> l.withDownloadCount(1));
+            case LOST_RACE -> { link = issue(); links.failNextConsume(); }
+            case INTEGRITY_FAILED -> { link = issue(); storage.corrupt(statement.storageKey()); }
+            case STORAGE_MISSING -> { link = issue(); storage.delete(statement.storageKey()); }
+            case INTERNAL_ERROR -> { link = issue(); storage.failNextReadWith(new IllegalStateException("boom")); }
+            case SUCCESS -> throw new IllegalStateException("excluded");
+        }
+        Clock at = outcome == RedemptionOutcome.EXPIRED ? Clock.fixed(link.expiresAt(), ZoneOffset.UTC) : clock;
+        final String rawToken = raw;
+
+        assertThatThrownBy(() -> service(audit, at).redeem(rawToken, CTX))
+                .isInstanceOf(LinkNotRedeemableException.class)
+                .extracting(e -> ((LinkNotRedeemableException) e).outcome())
+                .isEqualTo(outcome);
+        assertThat(audit.redemptionOutcomes()).containsExactly(outcome);
     }
 
     @Test

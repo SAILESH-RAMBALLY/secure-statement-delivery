@@ -48,7 +48,8 @@ public record AppProperties(
     public record Crypto(String kek, @NotBlank String kekId, boolean devFallbackAllowed) {
     }
 
-    public record StatementLimits(@Min(1024) @Max(52428800) long maxSizeBytes) {
+    /** Upper bound is the schema CHECK and the multipart limit (10 MiB); the three must agree (ADR-004). */
+    public record StatementLimits(@Min(1024) @Max(10485760) long maxSizeBytes) {
     }
 
     /** Bounds are enforced again by the domain LinkPolicy; these are the configured defaults. */
@@ -60,7 +61,7 @@ public record AppProperties(
     }
 
     /** Demo profile seed data; empty outside the demo profile. */
-    public record Demo(@Valid @NotNull List<DemoCustomer> customers) {
+    public record Demo(@NotNull List<@Valid DemoCustomer> customers) {
         public Demo {
             customers = customers == null ? List.of() : List.copyOf(customers);
         }

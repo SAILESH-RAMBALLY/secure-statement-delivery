@@ -2,13 +2,21 @@ name: CI
 
 on:
   push:
-    branches: ["**"]
+    branches: ["main"]
     tags: ["v*"]
   pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -24,15 +32,19 @@ jobs:
       - name: Build container image
         run: docker build -t secure-statements:ci .
 
-      - name: Smoke-test the image
+      - name: Run the image with the compose hardening and drive the full smoke flow
         run: |
-          docker run -d --name smoke -p 8080:8080 secure-statements:ci
-          for i in $(seq 1 30); do
-            if curl -fs http://localhost:8080/actuator/health >/dev/null; then echo "healthy"; exit 0; fi
-            sleep 2
-          done
-          docker logs smoke
-          exit 1
+          docker run -d --name smoke --read-only --tmpfs /tmp --cap-drop ALL \
+            --security-opt no-new-privileges:true -p 127.0.0.1:8080:8080 secure-statements:ci
+          scripts/smoke.sh http://127.0.0.1:8080
+
+      - name: Container logs on failure
+        if: failure()
+        run: docker logs smoke || true
+
+      - name: Clean up
+        if: always()
+        run: docker rm -f smoke || true
 
       - name: Upload coverage report
         if: always()

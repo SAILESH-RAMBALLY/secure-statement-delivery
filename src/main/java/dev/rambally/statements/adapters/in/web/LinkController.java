@@ -30,7 +30,7 @@ public class LinkController {
     @ApiResponse(responseCode = "404", description = "Link unknown or not yours (indistinguishable)")
     @DeleteMapping("/{linkId}")
     public ResponseEntity<Void> revoke(@PathVariable("linkId") String linkId, Principal actor) {
-        revoke.revoke(LinkId.of(linkId), actor);
+        revoke.revoke(RequestInputs.parse(() -> LinkId.of(linkId)), actor);
         return ResponseEntity.noContent().build();
     }
 }

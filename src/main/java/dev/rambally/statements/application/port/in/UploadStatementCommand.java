@@ -5,7 +5,10 @@ import dev.rambally.statements.domain.AccountNumber;
 import dev.rambally.statements.domain.CustomerId;
 import dev.rambally.statements.domain.StatementPeriod;
 
-/** The customer id here describes whose statement this is; the actor is the administrator uploading it. */
+/**
+ * The customer id here describes whose statement this is; the actor is the administrator uploading it.
+ * A transfer object: the caller hands over the byte array and must not reuse it.
+ */
 public record UploadStatementCommand(
         CustomerId customerId,
         AccountNumber accountNumber,
@@ -17,11 +20,6 @@ public record UploadStatementCommand(
         if (customerId == null || accountNumber == null || period == null || actor == null) {
             throw new IllegalArgumentException("upload command is incomplete");
         }
-        pdfBytes = pdfBytes == null ? new byte[0] : pdfBytes.clone();
-    }
-
-    @Override
-    public byte[] pdfBytes() {
-        return pdfBytes.clone();
+        pdfBytes = pdfBytes == null ? new byte[0] : pdfBytes;
     }
 }

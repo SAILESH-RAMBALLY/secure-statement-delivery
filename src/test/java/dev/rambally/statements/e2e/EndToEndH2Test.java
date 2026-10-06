@@ -74,7 +74,7 @@ class EndToEndH2Test {
         ResponseEntity<byte[]> first = flow.download(issued.token());
         assertThat(first.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(first.getHeaders().getContentType().toString()).isEqualTo("application/pdf");
-        assertThat(first.getHeaders().getFirst("Content-Disposition")).isEqualTo("attachment; filename=\"statement-1234567890-2026-09.pdf\"");
+        assertThat(first.getHeaders().getFirst("Content-Disposition")).isEqualTo("attachment; filename=\"statement-7890-2026-09.pdf\"");
         assertThat(Sha256.of(first.getBody())).isEqualTo(Sha256.of(pdf));
 
         EndToEndFlow.assertConstantNotFound(flow.download(issued.token()));
@@ -83,13 +83,15 @@ class EndToEndH2Test {
                 .param("id", java.util.UUID.fromString(issued.linkId())).query(String.class).list();
         assertThat(outcomes).containsExactly("LINK_ISSUED", "SUCCESS", "EXHAUSTED");
 
-        // Hygiene: the token is in exactly one place, the issue response.
-        assertThat(output.getAll()).doesNotContain(issued.token());
+        // Hygiene: the token is in exactly one place, the issue response. Positive controls first, so a
+        // silenced logger or disabled metrics cannot make these assertions pass vacuously.
+        assertThat(output.getAll()).contains("/download/[redacted]").doesNotContain(issued.token());
         assertThat(meters.getMeters()).flatExtracting(m -> m.getId().getTags()).extracting(Tag::getValue)
                 .noneMatch(v -> v.contains(issued.token()));
-        assertThat(meters.getMeters()).map(Meter::getId).filteredOn(id -> id.getName().equals("http.server.requests"))
-                .extracting(id -> id.getTag("uri")).filteredOn(uri -> uri != null && uri.startsWith("/download"))
-                .allMatch("/download/{token}"::equals);
+        var downloadUris = meters.getMeters().stream().map(Meter::getId)
+                .filter(id -> id.getName().equals("http.server.requests"))
+                .map(id -> id.getTag("uri")).filter(uri -> uri != null && uri.startsWith("/download")).toList();
+        assertThat(downloadUris).isNotEmpty().allMatch("/download/{token}"::equals);
 
         // Nothing on disk is plaintext.
         try (Stream<Path> files = Files.walk(properties.storage().root())) {

@@ -48,7 +48,7 @@ public class StatementController {
     public List<StatementSummaryResponse> list(Principal actor,
             @RequestParam(name = "customerId", required = false) String customerId) {
         if (customerId != null) {
-            throw new IllegalArgumentException("customerId is derived from the token and cannot be supplied");
+            throw RequestInputs.badRequest("customerId is derived from the token and cannot be supplied");
         }
         return list.listFor(actor).stream().map(StatementSummaryResponse::of).toList();
     }
@@ -60,7 +60,7 @@ public class StatementController {
     @ApiResponse(responseCode = "404", description = "Statement unknown or not yours (indistinguishable)")
     @PostMapping("/{statementId}/links")
     public ResponseEntity<IssueLinkResponse> issueLink(@PathVariable("statementId") String statementId, Principal actor) {
-        IssuedLink issued = issue.issue(new IssueLinkCommand(StatementId.of(statementId), actor));
+        IssuedLink issued = issue.issue(new IssueLinkCommand(RequestInputs.parse(() -> StatementId.of(statementId)), actor));
         return ResponseEntity.created(URI.create("/api/links/" + issued.linkId()))
                 .body(IssueLinkResponse.of(issued));
     }
@@ -70,6 +70,7 @@ public class StatementController {
     @ApiResponse(responseCode = "404", description = "Statement unknown or not yours (indistinguishable)")
     @GetMapping("/{statementId}/links")
     public List<LinkSummaryResponse> listLinks(@PathVariable("statementId") String statementId, Principal actor) {
-        return links.linksFor(StatementId.of(statementId), actor).stream().map(LinkSummaryResponse::of).toList();
+        return links.linksFor(RequestInputs.parse(() -> StatementId.of(statementId)), actor).stream()
+                .map(LinkSummaryResponse::of).toList();
     }
 }

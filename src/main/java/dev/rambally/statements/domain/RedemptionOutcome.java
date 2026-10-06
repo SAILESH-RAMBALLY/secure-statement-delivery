@@ -19,5 +19,7 @@ public enum RedemptionOutcome {
     /** GCM tag verification failed: tampered or corrupted ciphertext, or wrong key. */
     INTEGRITY_FAILED,
     /** The ciphertext file is missing or has the wrong size. */
-    STORAGE_MISSING
+    STORAGE_MISSING,
+    /** An infrastructure fault (database, filesystem, key provider) interrupted the attempt. */
+    INTERNAL_ERROR
 }

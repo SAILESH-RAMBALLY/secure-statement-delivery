@@ -18,10 +18,10 @@ class StatementTest {
     }
 
     @Test
-    void download_file_name_is_statement_account_period_pdf() {
+    void download_file_name_uses_only_the_last_four_account_digits() {
         Statement statement = Fixtures.statement(new CustomerId("C-1001"));
 
-        assertThat(statement.downloadFileName()).isEqualTo("statement-1234567890-2026-09.pdf");
+        assertThat(statement.downloadFileName()).isEqualTo("statement-7890-2026-09.pdf");
     }
 
     @Test

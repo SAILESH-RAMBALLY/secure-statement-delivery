@@ -30,7 +30,7 @@ public final class RevokeDownloadLinkService implements RevokeDownloadLinkUseCas
                 .orElseThrow(() -> new LinkNotFoundException(linkId));
         Instant now = clock.instant();
         if (links.revoke(linkId, now)) {
-            audit.record(AuditEvent.linkRevoked(now, link.revoke(now)));
+            SideEffects.quietly(() -> audit.record(AuditEvent.linkRevoked(now, link.revoke(now), actor.customerId())));
         }
     }
 }

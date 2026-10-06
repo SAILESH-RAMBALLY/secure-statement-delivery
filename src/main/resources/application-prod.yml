@@ -1,16 +1,31 @@
 # Production profile. Every development convenience is off, and ProdGuard refuses to start if any of these
-# values is missing or still points at a development default.
+# values is missing or still points at a development default. Placeholders default to blank on purpose so the
+# guard, not a placeholder-resolution error, reports what is missing.
 spring:
   security:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: ${APP_JWT_ISSUER_URI}
+          issuer-uri: ${APP_JWT_ISSUER_URI:}
+          audiences: ${APP_JWT_AUDIENCE:secure-statements}
+
+server:
+  # TLS terminates at the ingress. Honour X-Forwarded-For / X-Forwarded-Proto from the proxy hop only, so the
+  # audit trail records the real client address and Spring Security emits HSTS on the (forwarded) https requests.
+  # Link URLs still come from APP_PUBLIC_BASE_URL, never from forwarded Host headers (ADR-007).
+  forward-headers-strategy: native
+  tomcat:
+    remoteip:
+      remote-ip-header: x-forwarded-for
+      protocol-header: x-forwarded-proto
+      # internal-proxies keeps Tomcat's default (private ranges); override with SERVER_TOMCAT_REMOTEIP_INTERNAL_PROXIES.
 
 app:
-  public-base-url: ${APP_PUBLIC_BASE_URL}
+  public-base-url: ${APP_PUBLIC_BASE_URL:}
+  security:
+    audience: ${APP_JWT_AUDIENCE:secure-statements}
   crypto:
-    kek: ${APP_CRYPTO_KEK}
+    kek: ${APP_CRYPTO_KEK:}
     dev-fallback-allowed: false
 
 springdoc:

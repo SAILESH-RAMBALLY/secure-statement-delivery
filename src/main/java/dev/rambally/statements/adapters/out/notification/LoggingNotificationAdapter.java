@@ -18,8 +18,9 @@ public final class LoggingNotificationAdapter implements NotificationPort {
 
     @Override
     public void linkIssued(LinkIssuedNotification n) {
-        log.info("Download link {} for customer {} delivered to {} (expires {}, maxDownloads {})",
-                n.linkId(), n.customerId(), redact(n.url()), n.expiresAt(), n.maxDownloads());
+        // Customer identifiers are personal data; the audit table joins link id to customer when that is needed.
+        log.info("Download link {} delivered to {} (expires {}, maxDownloads {})",
+                n.linkId(), redact(n.url()), n.expiresAt(), n.maxDownloads());
     }
 
     /** scheme://host[:port]/download/[redacted] */

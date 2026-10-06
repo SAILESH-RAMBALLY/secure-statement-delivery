@@ -20,6 +20,11 @@ import dev.rambally.statements.domain.LinkToken;
 import dev.rambally.statements.domain.Statement;
 import dev.rambally.statements.domain.exception.StatementNotFoundException;
 
+/**
+ * Only the statement's owner may issue a link: the response carries the plaintext token, and an
+ * administrator must never hold a customer's download credential. Administrators ingest and may revoke.
+ * Once the link row is written, the response reflects it even if auditing or notification misbehave.
+ */
 public final class IssueDownloadLinkService implements IssueDownloadLinkUseCase {
 
     private final StatementRepository statements;
@@ -46,18 +51,18 @@ public final class IssueDownloadLinkService implements IssueDownloadLinkUseCase 
     @Override
     public IssuedLink issue(IssueLinkCommand command) {
         Statement statement = statements.findById(command.statementId())
-                .filter(s -> command.actor().mayAccess(s.customerId()))
+                .filter(s -> s.isOwnedBy(command.actor().customerId()))
                 .orElseThrow(() -> new StatementNotFoundException(command.statementId()));
 
         Instant now = clock.instant();
         LinkToken token = tokens.next();
         DownloadLink link = DownloadLink.issue(LinkId.newId(), statement, token.hash(), policy, now);
         links.save(link);
-        audit.record(AuditEvent.linkIssued(now, link));
 
         IssuedLink issued = new IssuedLink(link.id(), baseUrl.downloadUrl(token), link.expiresAt(), link.maxDownloads());
-        notifications.linkIssued(new LinkIssuedNotification(statement.customerId(), link.id(), issued.url(),
-                issued.expiresAt(), issued.maxDownloads()));
+        SideEffects.quietly(() -> audit.record(AuditEvent.linkIssued(now, link, command.actor().customerId())));
+        SideEffects.quietly(() -> notifications.linkIssued(new LinkIssuedNotification(statement.customerId(), link.id(),
+                issued.url(), issued.expiresAt(), issued.maxDownloads())));
         return issued;
     }
 }

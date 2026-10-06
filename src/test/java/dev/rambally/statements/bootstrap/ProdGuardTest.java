@@ -27,6 +27,7 @@ class ProdGuardTest {
         env.setProperty("app.public-base-url", "https://statements.example.com");
         env.setProperty("spring.datasource.url", "jdbc:postgresql://db:5432/statements");
         env.setProperty("spring.security.oauth2.resourceserver.jwt.issuer-uri", "https://idp.example.com/realms/bank");
+        env.setProperty("spring.security.oauth2.resourceserver.jwt.audiences", "secure-statements");
         env.setProperty("springdoc.api-docs.enabled", "false");
         env.setProperty("springdoc.swagger-ui.enabled", "false");
         return env;
@@ -59,6 +60,29 @@ class ProdGuardTest {
         MockEnvironment fallback = validProd();
         fallback.setProperty("app.crypto.dev-fallback-allowed", "true");
         assertThat(ProdGuard.check(fallback)).anySatisfy(p -> assertThat(p).contains("dev-fallback-allowed"));
+    }
+
+    @Test
+    void detects_the_dev_key_under_any_base64_spelling_and_rejects_undecodable_or_short_keys() {
+        MockEnvironment unpadded = validProd();
+        unpadded.setProperty("app.crypto.kek", LocalKekKeyProvider.DEV_KEK_BASE64.replace("=", ""));
+        assertThat(ProdGuard.check(unpadded)).anySatisfy(p -> assertThat(p).contains("development key"));
+
+        MockEnvironment garbage = validProd();
+        garbage.setProperty("app.crypto.kek", "not base64!");
+        assertThat(ProdGuard.check(garbage)).anySatisfy(p -> assertThat(p).contains("valid base64"));
+
+        MockEnvironment shortKey = validProd();
+        shortKey.setProperty("app.crypto.kek", "c2hvcnQ=");
+        assertThat(ProdGuard.check(shortKey)).anySatisfy(p -> assertThat(p).contains("32 bytes"));
+    }
+
+    @Test
+    void fails_when_no_audience_is_configured() {
+        MockEnvironment env = validProd();
+        env.setProperty("spring.security.oauth2.resourceserver.jwt.audiences", "");
+
+        assertThat(ProdGuard.check(env)).anySatisfy(p -> assertThat(p).contains("audience"));
     }
 
     @Test
@@ -124,5 +148,18 @@ class ProdGuardTest {
                 .run())
                 .hasMessageContaining("Refusing to start")
                 .hasMessageContaining("development key");
+    }
+
+    @Test
+    void a_missing_mandatory_variable_produces_the_readable_message_not_a_placeholder_error() {
+        assertThatThrownBy(() -> new SpringApplicationBuilder(SecureStatementDeliveryApplication.class)
+                .web(WebApplicationType.NONE)
+                .profiles("prod")
+                .properties(
+                        "APP_PUBLIC_BASE_URL=https://statements.example.com",
+                        "APP_JWT_ISSUER_URI=https://idp.example.com")
+                .run())
+                .hasMessageContaining("Refusing to start")
+                .hasMessageContaining("APP_CRYPTO_KEK is not set");
     }
 }

@@ -62,7 +62,11 @@ public final class UploadStatementService implements UploadStatementUseCase {
         try {
             statements.save(statement);
         } catch (RuntimeException e) {
-            storage.delete(key);
+            try {
+                storage.delete(key);
+            } catch (RuntimeException cleanupFailure) {
+                e.addSuppressed(cleanupFailure); // the original failure is what the caller must see
+            }
             throw e;
         }
         return id;

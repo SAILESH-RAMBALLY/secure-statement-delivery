@@ -53,7 +53,7 @@ class DownloadControllerTest {
             if (failWith != null) {
                 throw failWith;
             }
-            return new StatementDownload("statement-1234567890-2026-09.pdf", TestPdfs.minimal());
+            return new StatementDownload("statement-7890-2026-09.pdf", TestPdfs.minimal());
         }
     }
 
@@ -81,7 +81,7 @@ class DownloadControllerTest {
                 }))
                 .andExpect(status().isOk())
                 .andExpect(content().contentType("application/pdf"))
-                .andExpect(header().string("Content-Disposition", "attachment; filename=\"statement-1234567890-2026-09.pdf\""))
+                .andExpect(header().string("Content-Disposition", "attachment; filename=\"statement-7890-2026-09.pdf\""))
                 .andExpect(header().longValue("Content-Length", TestPdfs.minimal().length))
                 .andExpect(header().string("Cache-Control", org.hamcrest.Matchers.containsString("no-store")))
                 .andExpect(header().string("X-Content-Type-Options", "nosniff"))
@@ -159,12 +159,35 @@ class DownloadControllerTest {
     }
 
     @Test
-    void unexpected_throwable_from_use_case_becomes_the_same_404() throws Exception {
+    void unexpected_exception_from_use_case_becomes_the_same_404() throws Exception {
         redeem.failWith = new IllegalStateException("database exploded with token " + TOKEN);
 
         mvc.perform(get("/download/" + TOKEN))
                 .andExpect(status().isNotFound())
                 .andExpect(content().string(DownloadProblem.NOT_FOUND_BODY));
+    }
+
+    @Test
+    void an_accept_header_that_excludes_pdf_is_not_a_406_oracle() throws Exception {
+        redeem.failWith = null;
+
+        mvc.perform(get("/download/" + TOKEN).header("Accept", "application/json"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType("application/pdf"));
+    }
+
+    @Test
+    void any_other_path_under_download_gets_the_identical_404_body() throws Exception {
+        int before = redeem.invocations;
+
+        mvc.perform(get("/download/" + TOKEN + "/extra"))
+                .andExpect(status().isNotFound())
+                .andExpect(content().string(DownloadProblem.NOT_FOUND_BODY));
+        mvc.perform(get("/download/"))
+                .andExpect(status().isNotFound())
+                .andExpect(content().string(DownloadProblem.NOT_FOUND_BODY));
+
+        assertThat(redeem.invocations).isEqualTo(before);
     }
 
     @Test

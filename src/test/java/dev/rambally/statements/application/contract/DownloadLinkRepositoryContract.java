@@ -72,6 +72,28 @@ public abstract class DownloadLinkRepositoryContract {
     }
 
     @Test
+    void saving_an_existing_link_id_is_rejected_rather_than_overwritten() {
+        DownloadLink link = link(FixedTokenGenerator.tokenNumber(2).hash(), NOW);
+        links().save(link);
+
+        assertThatThrownBy(() -> links().save(link.withDownloadCount(1)))
+                .isInstanceOf(DuplicateTokenHashException.class);
+        assertThat(links().findById(link.id()).orElseThrow().downloadCount()).isZero();
+    }
+
+    @Test
+    void microsecond_instants_round_trip_exactly() {
+        Instant micros = Instant.parse("2026-10-06T10:00:00.123456Z");
+        DownloadLink link = DownloadLink.issue(LinkId.newId(), statement, FixedTokenGenerator.tokenNumber(3).hash(), POLICY, micros);
+
+        links().save(link);
+
+        DownloadLink loaded = links().findById(link.id()).orElseThrow();
+        assertThat(loaded.issuedAt()).isEqualTo(micros);
+        assertThat(loaded.expiresAt()).isEqualTo(micros.plus(POLICY.ttl()));
+    }
+
+    @Test
     void duplicate_token_hash_is_rejected() {
         TokenHash hash = FixedTokenGenerator.tokenNumber(2).hash();
         links().save(link(hash, NOW));

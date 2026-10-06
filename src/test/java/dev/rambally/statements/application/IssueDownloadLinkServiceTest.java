@@ -91,11 +91,23 @@ class IssueDownloadLinkServiceTest {
     }
 
     @Test
-    void admin_may_issue_for_any_customer() {
-        IssuedLink issued = service.issue(new IssueLinkCommand(statement.id(), ADMIN));
+    void an_admin_cannot_issue_a_link_for_a_customer_because_the_response_carries_the_credential() {
+        assertThatThrownBy(() -> service.issue(new IssueLinkCommand(statement.id(), ADMIN)))
+                .isInstanceOf(StatementNotFoundException.class);
 
+        assertThat(links.size()).isZero();
+    }
+
+    @Test
+    void audit_and_notification_failures_do_not_undo_an_issued_link() {
+        IssueDownloadLinkService fragile = new IssueDownloadLinkService(statements, links, new FixedTokenGenerator(TOKEN),
+                new dev.rambally.statements.application.fakes.ThrowingAuditLog(),
+                n -> { throw new IllegalStateException("mail server down"); }, baseUrl, policy, clock);
+
+        IssuedLink issued = fragile.issue(new IssueLinkCommand(statement.id(), OWNER));
+
+        assertThat(issued.url().toString()).endsWith("/download/" + TOKEN.value());
         assertThat(links.findById(issued.linkId())).isPresent();
-        assertThat(links.findById(issued.linkId()).orElseThrow().customerId()).isEqualTo(new CustomerId("C-1001"));
     }
 
     @Test
@@ -107,7 +119,7 @@ class IssueDownloadLinkServiceTest {
     }
 
     @Test
-    void records_LINK_ISSUED_audit_with_hash_prefix_only() {
+    void records_LINK_ISSUED_audit_with_hash_prefix_and_the_acting_subject() {
         IssuedLink issued = service.issue(new IssueLinkCommand(statement.id(), OWNER));
 
         assertThat(audit.ofType(AuditEventType.LINK_ISSUED)).singleElement().satisfies(event -> {
@@ -115,6 +127,7 @@ class IssueDownloadLinkServiceTest {
             assertThat(event.linkId()).isEqualTo(issued.linkId());
             assertThat(event.statementId()).isEqualTo(statement.id());
             assertThat(event.customerId()).isEqualTo(new CustomerId("C-1001"));
+            assertThat(event.actorId()).isEqualTo(OWNER.customerId());
             assertThat(event.tokenHashPrefix()).isEqualTo(TOKEN.hash().prefix());
             assertThat(event.outcome()).isNull();
         });

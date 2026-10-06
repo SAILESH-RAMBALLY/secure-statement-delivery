@@ -11,6 +11,11 @@ public final class InMemoryStatementStorage implements StatementStorage {
 
     private final Map<StorageKey, byte[]> files = new ConcurrentHashMap<>();
     private RuntimeException failNextWriteWith;
+    private RuntimeException failNextReadWith;
+
+    public void failNextReadWith(RuntimeException e) {
+        this.failNextReadWith = e;
+    }
 
     public void failNextWriteWith(RuntimeException e) {
         this.failNextWriteWith = e;
@@ -28,6 +33,11 @@ public final class InMemoryStatementStorage implements StatementStorage {
 
     @Override
     public Optional<byte[]> read(StorageKey key, long expectedLength) {
+        if (failNextReadWith != null) {
+            RuntimeException e = failNextReadWith;
+            failNextReadWith = null;
+            throw e;
+        }
         byte[] bytes = files.get(key);
         if (bytes == null || bytes.length != expectedLength) {
             return Optional.empty();

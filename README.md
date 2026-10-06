@@ -19,10 +19,11 @@ Requires Docker. No local JDK is needed for this path.
 
 ```bash
 docker build -t secure-statements .
-docker run --rm -p 8080:8080 -v statements-data:/data secure-statements
+docker run --rm -p 127.0.0.1:8080:8080 -v statements-data:/data secure-statements
 ```
 
-Open <http://localhost:8080/swagger-ui.html>. The image defaults to the `h2,dev,demo` profiles: file-based H2
+Open <http://localhost:8080/swagger-ui.html>. Bind to loopback as shown: the dev profile's token issuer must
+not be reachable from the network. The image defaults to the `h2,dev,demo` profiles: file-based H2
 and filesystem storage on the `/data` volume, a development token issuer at `POST /dev/token`, and five seeded
 demo statements for customers `C-1001` and `C-2002`.
 
@@ -62,7 +63,8 @@ Requires JDK 21. Docker is needed only for the `*IT` integration tests (Testcont
 ```
 
 Reports: `target/surefire-reports`, `target/failsafe-reports`, `target/site/jacoco/index.html`.
-CI (`.github/workflows/ci.yml`) runs `./mvnw verify`, builds the image and smoke-tests it.
+CI (`.github/workflows/ci.yml`) runs `./mvnw verify`, builds the image, starts it with the compose hardening
+(read-only root, no capabilities, loopback port) and runs `scripts/smoke.sh` against it.
 
 ## API
 
@@ -70,10 +72,10 @@ CI (`.github/workflows/ci.yml`) runs `./mvnw verify`, builds the image and smoke
 |---|---|---|
 | `POST /api/admin/statements` (multipart) | ADMIN | 201 + `Location`; 400 / 403 / 409 / 413 / 415 |
 | `GET /api/statements` | the JWT subject | own statements, newest first; `?customerId` is rejected with 400 |
-| `POST /api/statements/{id}/links` | owner or ADMIN | 201 `{linkId, url, expiresAt, maxDownloads}`; 404 if not yours |
+| `POST /api/statements/{id}/links` | owner only (the response carries the credential) | 201 `{linkId, url, expiresAt, maxDownloads}`; 404 if not yours |
 | `GET /api/statements/{id}/links` | owner or ADMIN | status and counts per link; never tokens or hashes |
 | `DELETE /api/links/{linkId}` | owner or ADMIN | 204, idempotent; 404 if not yours |
-| `GET /download/{token}` | public: the token is the credential | 200 PDF, or one constant 404; 503 when saturated |
+| `GET /download/{token}` | public: the token is the credential | 200 PDF, or one constant 404 (infrastructure faults included, audited as `INTERNAL_ERROR`); 503 when saturated |
 | `HEAD /download/{token}` | public | constant 404, never consumes the link |
 | `POST /dev/token` | dev profile only | RS256 JWT for Swagger and curl |
 | `/actuator/health`, `/liveness`, `/readiness` | public | readiness includes the database |
@@ -108,10 +110,12 @@ services are constructed only in bootstrap; no field injection.
 | Guessing links | 256-bit random tokens; constant 404 for every failure | `DownloadControllerTest.every_redemption_outcome_returns_byte_identical_404_problem_detail` |
 | Replaying a leaked link | Single-use by default (configurable 1 to 10), 24 h TTL, revocable, HEAD never consumes | `DownloadLinkConcurrencyIT`, `ParallelDownloadIT`, `LinkLifecycleHttpTest` |
 | Tampered or swapped ciphertext | GCM tag verified before the first byte; AAD binds statement id and format | `AesGcmEnvelopeCipherTest` tamper and swap cases |
-| Token leaking via logs or metrics | Redacted `toString`, redacting notifier, templated `uri` tag, no access log | `EndToEndH2Test.issued_token_never_appears_in_any_log_line_or_meter_tag` |
+| Token leaking via logs or metrics | Redacted `toString`, redacting notifier (no customer ids either), templated `uri` tag, no access log | `EndToEndH2Test` (scans captured logs and every meter tag, with positive controls) |
 | Token leaking via error bodies | `instance` fixed to `/api` or `/download`; details are reason phrases | `ApiExceptionHandlerTest`, `ServerErrorHygieneTest` |
 | Forged `Host` header | Links built from `APP_PUBLIC_BASE_URL`, forwarded headers ignored | `PublicBaseUrlTest`, `IssueDownloadLinkServiceTest` |
-| Horizontal access (IDOR) | Identity from the JWT subject only; ownership checked in services; 404 for not-yours | `StatementControllerTest`, `RevokeDownloadLinkServiceTest`, `ListLinksServiceTest` |
+| Horizontal access (IDOR) | Identity from the JWT subject only; ownership checked in services; 404 for not-yours; admins cannot mint customer links | `StatementControllerTest`, `IssueDownloadLinkServiceTest`, `RevokeDownloadLinkServiceTest` |
+| Token minted for another service | Audience required and validated in every profile; `ProdGuard` refuses to start without one | `JwtNegativeHttpTest`, `ProdGuardTest` |
+| Misattributed admin actions | Issue and revoke audit rows carry `actor_id` separately from the customer | `RevokeDownloadLinkServiceTest`, `JdbcAuditLogTest` |
 | Forgotten security rule | No-matcher default chain ends in `denyAll` | `SecurityConfigTest` |
 | Dev artefacts in production | `ProdGuard` refuses the dev key, blank key, http base URL, H2, dev/demo profiles, open Swagger | `ProdGuardTest` |
 | Audit tampering or loss | `REQUIRES_NEW` writes that never throw; PostgreSQL trigger forbids UPDATE/DELETE/TRUNCATE | `JdbcAuditLogTest`, `DownloadAuditAppendOnlyIT` |
@@ -142,13 +146,16 @@ Swagger off, structured ECS logs, guard), `test`.
 | `APP_PUBLIC_BASE_URL` | `http://localhost:8080` | base of issued links; must be https in prod |
 | `APP_CRYPTO_KEK` | blank (dev fallback) | base64 of 32 random bytes; required in prod |
 | `APP_CRYPTO_KEK_ID` | `local-kek-v1` | identifier stored with each statement, for rotation |
-| `APP_JWT_ISSUER_URI` | none | prod JWT issuer |
+| `APP_JWT_ISSUER_URI` | none | prod JWT issuer (required by the guard) |
+| `APP_JWT_AUDIENCE` | `secure-statements` | audience every token must carry |
+| `SERVER_TOMCAT_REMOTEIP_INTERNAL_PROXIES` | Tomcat default (private ranges) | prod only: proxies whose `X-Forwarded-*` headers are trusted |
 | `SPRING_DATASOURCE_URL`, `_USERNAME`, `_PASSWORD` | compose values | PostgreSQL connection |
 | `APP_LINK_TTL`, `APP_LINK_MAX_DOWNLOADS` | `PT24H`, `1` | link policy (bounded 1 min to 30 d, 1 to 10) |
 | `APP_DOWNLOAD_MAX_CONCURRENT` | `16` | bulkhead permits |
 
-Production sketch: `SPRING_PROFILES_ACTIVE=postgres,prod`, the KEK from a secrets manager, TLS at the ingress,
-`APP_PUBLIC_BASE_URL=https://...`. `ProdGuard` refuses anything less.
+Production sketch: `SPRING_PROFILES_ACTIVE=postgres,prod`, the KEK from a secrets manager, TLS at the ingress
+forwarding `X-Forwarded-For` / `X-Forwarded-Proto`, `APP_PUBLIC_BASE_URL=https://...`, `APP_JWT_ISSUER_URI` and
+`APP_JWT_AUDIENCE` matching the identity provider. `ProdGuard` refuses anything less, naming every missing item.
 
 ## Extension points designed for, not built
 
@@ -158,6 +165,7 @@ Production sketch: `SPRING_PROFILES_ACTIVE=postgres,prod`, the KEK from a secret
 - KEK rotation job re-wrapping `wrapped_dek` rows; the content AAD excludes the KEK id for exactly this reason.
 - Chunked AEAD as `cipher_format = 2` for statements beyond tens of megabytes.
 - Edge rate limiting; in-process limiting was rejected because 256-bit tokens make enumeration infeasible.
+- Digest-pinned base images and an image vulnerability scan in CI.
 
 ## Decisions
 

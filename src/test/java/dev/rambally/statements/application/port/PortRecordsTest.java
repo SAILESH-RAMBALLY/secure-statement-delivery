@@ -15,19 +15,18 @@ import dev.rambally.statements.domain.StatementPeriod;
 
 import org.junit.jupiter.api.Test;
 
-/** The port records guard their own completeness and copy their byte arrays. */
+/** The port records guard their own completeness; byte-array payloads are handed over, not copied. */
 class PortRecordsTest {
 
     private static final Principal ACTOR = new Principal(new CustomerId("C-1"), true);
 
     @Test
-    void upload_command_requires_every_part_and_copies_bytes() {
+    void upload_command_requires_every_part_and_takes_ownership_of_the_bytes_without_copying() {
         byte[] bytes = {1, 2, 3};
         UploadStatementCommand command = new UploadStatementCommand(new CustomerId("C-1"), new AccountNumber("1234567890"),
                 StatementPeriod.parse("2026-09"), bytes, ACTOR);
-        bytes[0] = 9;
 
-        assertThat(command.pdfBytes()).containsExactly(1, 2, 3);
+        assertThat(command.pdfBytes()).isSameAs(bytes); // transfer object: one statement-sized allocation, not two
         assertThat(new UploadStatementCommand(new CustomerId("C-1"), new AccountNumber("1234567890"),
                 StatementPeriod.parse("2026-09"), null, ACTOR).pdfBytes()).isEmpty();
         assertThatThrownBy(() -> new UploadStatementCommand(null, new AccountNumber("1234567890"),
@@ -43,12 +42,13 @@ class PortRecordsTest {
     }
 
     @Test
-    void statement_download_copies_its_bytes() {
+    void statement_download_is_a_transfer_object_that_does_not_copy_and_rejects_nulls() {
         byte[] bytes = {5, 5};
         StatementDownload download = new StatementDownload("a.pdf", bytes);
-        bytes[0] = 0;
 
-        assertThat(download.pdf()).containsExactly(5, 5);
+        assertThat(download.pdf()).isSameAs(bytes);
+        assertThatThrownBy(() -> new StatementDownload(null, bytes)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new StatementDownload("a.pdf", null)).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test

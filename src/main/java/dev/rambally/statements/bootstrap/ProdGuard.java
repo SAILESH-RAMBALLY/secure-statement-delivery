@@ -1,6 +1,8 @@
 package dev.rambally.statements.bootstrap;
 
+import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 
 import dev.rambally.statements.adapters.out.crypto.LocalKekKeyProvider;
@@ -39,8 +41,8 @@ public final class ProdGuard implements EnvironmentPostProcessor, Ordered {
         String kek = env.getProperty("app.crypto.kek", "");
         if (kek.isBlank()) {
             problems.add("APP_CRYPTO_KEK is not set (base64 of 32 random bytes; generate with: openssl rand -base64 32)");
-        } else if (kek.trim().equals(LocalKekKeyProvider.DEV_KEK_BASE64)) {
-            problems.add("APP_CRYPTO_KEK is the built-in development key; statements would not be protected");
+        } else {
+            checkKekBytes(kek.trim(), problems);
         }
         if (env.getProperty("app.crypto.dev-fallback-allowed", Boolean.class, false)) {
             problems.add("app.crypto.dev-fallback-allowed must be false");
@@ -69,11 +71,32 @@ public final class ProdGuard implements EnvironmentPostProcessor, Ordered {
             problems.add("no JWT decoder source: set APP_JWT_ISSUER_URI (issuer-uri), or jwk-set-uri / public-key-location");
         }
 
+        if (env.getProperty(JWT + "audiences", "").isBlank()) {
+            problems.add("no JWT audience: set APP_JWT_AUDIENCE so tokens minted for other services are rejected");
+        }
+
         if (env.getProperty("springdoc.api-docs.enabled", Boolean.class, true)
                 || env.getProperty("springdoc.swagger-ui.enabled", Boolean.class, true)) {
             problems.add("springdoc api-docs and swagger-ui must be disabled in prod");
         }
         return problems;
+    }
+
+    /** Compares decoded bytes, so no alternative base64 spelling of the development key can slip through. */
+    private static void checkKekBytes(String base64, List<String> problems) {
+        byte[] bytes;
+        try {
+            bytes = Base64.getDecoder().decode(base64);
+        } catch (IllegalArgumentException e) {
+            problems.add("APP_CRYPTO_KEK is not valid base64");
+            return;
+        }
+        if (bytes.length != 32) {
+            problems.add("APP_CRYPTO_KEK must decode to exactly 32 bytes (found " + bytes.length + ")");
+        }
+        if (MessageDigest.isEqual(bytes, Base64.getDecoder().decode(LocalKekKeyProvider.DEV_KEK_BASE64))) {
+            problems.add("APP_CRYPTO_KEK is the built-in development key; statements would not be protected");
+        }
     }
 
     /** After ConfigData, so profile-specific YAML and environment variables are already merged. */

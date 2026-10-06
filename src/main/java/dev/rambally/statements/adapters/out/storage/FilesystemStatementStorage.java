@@ -2,6 +2,8 @@ package dev.rambally.statements.adapters.out.storage;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.channels.FileChannel;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -29,7 +31,10 @@ public final class FilesystemStatementStorage implements StatementStorage {
             Files.createDirectories(target.getParent());
             Path tmp = Files.createTempFile(target.getParent(), "." + target.getFileName() + ".", ".tmp");
             try {
-                Files.write(tmp, ciphertext);
+                try (FileChannel channel = FileChannel.open(tmp, StandardOpenOption.WRITE)) {
+                    channel.write(java.nio.ByteBuffer.wrap(ciphertext));
+                    channel.force(true); // data on disk before the rename becomes visible
+                }
                 Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
             } finally {
                 Files.deleteIfExists(tmp);

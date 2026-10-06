@@ -51,8 +51,29 @@ class RevokeDownloadLinkServiceTest {
         assertThat(audit.ofType(AuditEventType.LINK_REVOKED)).singleElement().satisfies(e -> {
             assertThat(e.linkId()).isEqualTo(link.id());
             assertThat(e.customerId()).isEqualTo(new CustomerId("C-1001"));
+            assertThat(e.actorId()).isEqualTo(OWNER.customerId());
             assertThat(e.tokenHashPrefix()).isEqualTo(link.tokenHash().prefix());
         });
+    }
+
+    @Test
+    void an_admin_revocation_is_attributed_to_the_admin_not_the_customer() {
+        service.revoke(link.id(), ADMIN);
+
+        assertThat(audit.ofType(AuditEventType.LINK_REVOKED)).singleElement().satisfies(e -> {
+            assertThat(e.customerId()).isEqualTo(new CustomerId("C-1001"));
+            assertThat(e.actorId()).isEqualTo(new CustomerId("ops-admin"));
+        });
+    }
+
+    @Test
+    void an_audit_adapter_failure_does_not_fail_the_revocation() {
+        RevokeDownloadLinkService fragile = new RevokeDownloadLinkService(links,
+                new dev.rambally.statements.application.fakes.ThrowingAuditLog(), clock);
+
+        fragile.revoke(link.id(), OWNER);
+
+        assertThat(links.findById(link.id()).orElseThrow().revokedAt()).isNotNull();
     }
 
     @Test

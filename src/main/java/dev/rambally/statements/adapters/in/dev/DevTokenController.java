@@ -15,6 +15,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
 import org.springframework.context.annotation.Profile;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.oauth2.jose.jws.SignatureAlgorithm;
 import org.springframework.security.oauth2.jwt.JwsHeader;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
@@ -24,6 +25,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Development-only token issuer so the API can be exercised from Swagger UI without an identity
@@ -56,7 +58,7 @@ public class DevTokenController {
     @PostMapping("/token")
     public TokenResponse token(@Valid @RequestBody TokenRequest request) {
         if (!ROLES.containsAll(request.roles())) {
-            throw new IllegalArgumentException("roles must be a subset of " + ROLES);
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "roles must be a subset of " + ROLES);
         }
         Instant now = Instant.now();
         Instant expiresAt = now.plus(Duration.ofMinutes(request.ttlMinutes() == null ? 60 : request.ttlMinutes()));

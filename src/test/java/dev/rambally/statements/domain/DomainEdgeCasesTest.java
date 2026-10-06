@@ -63,10 +63,13 @@ class DomainEdgeCasesTest {
 
     @Test
     void audit_event_requires_an_outcome_for_redemptions_only() {
-        assertThatThrownBy(() -> new AuditEvent(Instant.EPOCH, AuditEventType.REDEMPTION, null, null, null, null, null, null, null))
+        assertThatThrownBy(() -> new AuditEvent(Instant.EPOCH, AuditEventType.REDEMPTION, null, null, null, null, null, null, null, null))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThat(new AuditEvent(Instant.EPOCH, AuditEventType.LINK_ISSUED, null, null, null, null, null, null, null).outcome()).isNull();
-        assertThatThrownBy(() -> new AuditEvent(null, AuditEventType.LINK_ISSUED, null, null, null, null, null, null, null))
+        CustomerId actor = new CustomerId("C-1");
+        assertThat(new AuditEvent(Instant.EPOCH, AuditEventType.LINK_ISSUED, null, null, null, null, null, actor, null, null).outcome()).isNull();
+        assertThatThrownBy(() -> new AuditEvent(Instant.EPOCH, AuditEventType.LINK_ISSUED, null, null, null, null, null, null, null, null))
+                .as("issue and revoke events must name the actor").isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new AuditEvent(null, AuditEventType.LINK_ISSUED, null, null, null, null, null, actor, null, null))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 

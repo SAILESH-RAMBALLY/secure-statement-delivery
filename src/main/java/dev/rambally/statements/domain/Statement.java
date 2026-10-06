@@ -33,8 +33,12 @@ public record Statement(
         return customerId.equals(candidate);
     }
 
-    /** Server-derived, ASCII-only file name; the uploaded file name is never stored or echoed. */
+    /**
+     * Server-derived, ASCII-only file name; the uploaded file name is never stored or echoed. Carries only the
+     * last four digits of the account: file names end up in browser history, mail attachments and proxy logs.
+     */
     public String downloadFileName() {
-        return "statement-" + accountNumber.value() + "-" + period + ".pdf";
+        String digits = accountNumber.value();
+        return "statement-" + digits.substring(digits.length() - 4) + "-" + period + ".pdf";
     }
 }

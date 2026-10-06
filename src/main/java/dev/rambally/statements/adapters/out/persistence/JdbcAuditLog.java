@@ -41,8 +41,8 @@ public class JdbcAuditLog implements AuditLog {
         try {
             requiresNew.executeWithoutResult(status -> jdbc.sql(
                             "INSERT INTO download_audit (occurred_at, event_type, outcome, token_hash_prefix, link_id, "
-                                    + "statement_id, customer_id, client_ip, user_agent) VALUES (:occurred_at, :event_type, "
-                                    + ":outcome, :token_hash_prefix, :link_id, :statement_id, :customer_id, :client_ip, :user_agent)")
+                                    + "statement_id, customer_id, actor_id, client_ip, user_agent) VALUES (:occurred_at, :event_type, "
+                                    + ":outcome, :token_hash_prefix, :link_id, :statement_id, :customer_id, :actor_id, :client_ip, :user_agent)")
                     .param("occurred_at", JdbcTimes.toDb(e.at()))
                     .param("event_type", e.type().name())
                     .param("outcome", e.outcome() == null ? null : e.outcome().name())
@@ -50,7 +50,8 @@ public class JdbcAuditLog implements AuditLog {
                     .param("link_id", e.linkId() == null ? null : e.linkId().value())
                     .param("statement_id", e.statementId() == null ? null : e.statementId().value())
                     .param("customer_id", e.customerId() == null ? null : e.customerId().value())
-                    .param("client_ip", e.clientIp())
+                    .param("actor_id", e.actorId() == null ? null : e.actorId().value())
+                    .param("client_ip", truncate(e.clientIp(), 45))
                     .param("user_agent", truncate(e.userAgent(), 255))
                     .update());
         } catch (RuntimeException ex) {

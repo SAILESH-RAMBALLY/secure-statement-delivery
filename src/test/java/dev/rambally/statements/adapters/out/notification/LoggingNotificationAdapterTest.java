@@ -37,16 +37,17 @@ class LoggingNotificationAdapterTest {
     }
 
     @Test
-    void logs_redacted_url_and_never_the_token() {
+    void logs_redacted_url_and_never_the_token_or_the_customer_id() {
         LinkId linkId = LinkId.newId();
         adapter.linkIssued(new LinkIssuedNotification(new CustomerId("C-1001"), linkId,
                 URI.create("https://statements.example.test:8443/download/" + TOKEN), Instant.parse("2026-10-07T10:00:00Z"), 1));
 
         assertThat(logs.list).singleElement().satisfies(event -> {
             String message = event.getFormattedMessage();
-            assertThat(message).contains("C-1001").contains(linkId.toString())
+            assertThat(message).contains(linkId.toString())
                     .contains("https://statements.example.test:8443/download/[redacted]")
-                    .doesNotContain(TOKEN);
+                    .doesNotContain(TOKEN)
+                    .as("customer identifiers are personal data and stay out of logs").doesNotContain("C-1001");
         });
     }
 

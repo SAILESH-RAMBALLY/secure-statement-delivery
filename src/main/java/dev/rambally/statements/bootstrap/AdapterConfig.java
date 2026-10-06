@@ -1,6 +1,8 @@
 package dev.rambally.statements.bootstrap;
 
 import java.time.Clock;
+import java.time.Duration;
+import java.time.temporal.ChronoUnit;
 
 import dev.rambally.statements.adapters.out.crypto.LocalKekKeyProvider;
 import dev.rambally.statements.adapters.out.notification.LoggingNotificationAdapter;
@@ -22,9 +24,10 @@ public class AdapterConfig {
 
     private static final Logger log = LoggerFactory.getLogger(AdapterConfig.class);
 
+    /** Microsecond ticks: TIMESTAMP columns hold microseconds, so in-memory and stored instants always agree. */
     @Bean
     Clock clock() {
-        return Clock.systemUTC();
+        return Clock.tick(Clock.systemUTC(), Duration.of(1, ChronoUnit.MICROS));
     }
 
     @Bean

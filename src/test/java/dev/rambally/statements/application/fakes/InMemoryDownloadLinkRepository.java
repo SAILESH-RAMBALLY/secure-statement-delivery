@@ -19,17 +19,24 @@ public final class InMemoryDownloadLinkRepository implements DownloadLinkReposit
 
     private final Map<LinkId, DownloadLink> byId = new ConcurrentHashMap<>();
     private volatile boolean failNextConsume;
+    private volatile RuntimeException failNextFindWith;
+
+    /** Test hook: the next lookup throws, as a database outage would. */
+    public void failNextFindWith(RuntimeException e) {
+        this.failNextFindWith = e;
+    }
 
     /** Test hook: make the next tryConsume lose the race even though the pre-check passed. */
     public void failNextConsume() {
         this.failNextConsume = true;
     }
 
+    /** Mirrors the JDBC adapter: a plain insert, so an existing id or hash is rejected rather than overwritten. */
     @Override
     public synchronized void save(DownloadLink link) {
-        boolean duplicateHash = byId.values().stream()
-                .anyMatch(l -> !l.id().equals(link.id()) && l.tokenHash().equals(link.tokenHash()));
-        if (duplicateHash) {
+        boolean duplicate = byId.containsKey(link.id())
+                || byId.values().stream().anyMatch(l -> l.tokenHash().equals(link.tokenHash()));
+        if (duplicate) {
             throw new DuplicateTokenHashException();
         }
         byId.put(link.id(), link);
@@ -37,6 +44,11 @@ public final class InMemoryDownloadLinkRepository implements DownloadLinkReposit
 
     @Override
     public Optional<DownloadLink> findByTokenHash(TokenHash hash) {
+        if (failNextFindWith != null) {
+            RuntimeException e = failNextFindWith;
+            failNextFindWith = null;
+            throw e;
+        }
         return byId.values().stream().filter(l -> l.tokenHash().equals(hash)).findFirst();
     }
 

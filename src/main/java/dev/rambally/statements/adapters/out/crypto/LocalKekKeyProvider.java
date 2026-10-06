@@ -65,6 +65,9 @@ public final class LocalKekKeyProvider implements KeyProvider {
             throw new IllegalArgumentException("APP_CRYPTO_KEK must be valid base64");
         }
         boolean isDevKey = Arrays.equals(bytes, Base64.getDecoder().decode(DEV_KEK_BASE64));
+        if (isDevKey && !devFallbackAllowed) {
+            throw new IllegalArgumentException("APP_CRYPTO_KEK is the built-in development key; refusing to use it here");
+        }
         return new LocalKekKeyProvider(bytes, kekId, isDevKey);
     }
 
