@@ -125,4 +125,39 @@ class AesGcmEnvelopeCipherTest {
         assertThat(opened).isEqualTo(pdf.bytes());
         assertThat(rotated.kekId()).isEqualTo("kek-b");
     }
+
+    @Test
+    void a_key_provider_returning_an_unusable_key_is_a_programming_error_not_an_integrity_failure() {
+        AesGcmEnvelopeCipher.Sealed sealed = cipher.seal(pdf, statementId, kekA);
+        KeyProvider broken = new KeyProvider() {
+            @Override
+            public String currentKekId() {
+                return "kek-a";
+            }
+
+            @Override
+            public WrappedKey wrap(byte[] dek, byte[] aad) {
+                return kekA.wrap(dek, aad);
+            }
+
+            @Override
+            public byte[] unwrap(WrappedKey wrapped, byte[] aad) {
+                return new byte[15]; // not a valid AES key length
+            }
+        };
+
+        assertThatThrownBy(() -> cipher.open(sealed.ciphertext(), statementId, sealed.envelope(), broken))
+                .isInstanceOf(IllegalStateException.class)
+                .isNotInstanceOf(IntegrityException.class);
+    }
+
+    @Test
+    void sealed_result_copies_its_ciphertext() {
+        AesGcmEnvelopeCipher.Sealed sealed = cipher.seal(pdf, statementId, kekA);
+        byte[] first = sealed.ciphertext();
+        first[0] ^= 0x01;
+
+        assertThat(sealed.ciphertext()[0]).isNotEqualTo(first[0]);
+        assertThat(sealed.envelope().toString()).doesNotContain("wrappedDek");
+    }
 }

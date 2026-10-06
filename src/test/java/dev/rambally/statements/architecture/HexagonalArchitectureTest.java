@@ -79,6 +79,19 @@ class HexagonalArchitectureTest {
             .should().dependOnClassesThat().resideInAPackage(BOOTSTRAP);
 
     @ArchTest
+    static final ArchRule in_adapters_depend_on_driving_ports_never_on_service_classes = noClasses()
+            .that().resideInAPackage(ADAPTERS_IN)
+            .should().dependOnClassesThat().haveSimpleNameEndingWith("Service");
+
+    @ArchTest
+    static final ArchRule services_are_instantiated_only_in_bootstrap = noClasses()
+            .that().resideOutsideOfPackages(BOOTSTRAP, APPLICATION)
+            .should().callConstructorWhere(com.tngtech.archunit.base.DescribedPredicate.describe(
+                    "constructor of an application service",
+                    call -> call.getTargetOwner().getPackageName().startsWith("dev.rambally.statements.application")
+                            && call.getTargetOwner().getSimpleName().endsWith("Service")));
+
+    @ArchTest
     static final ArchRule no_field_injection = NO_CLASSES_SHOULD_USE_FIELD_INJECTION;
 
     @ArchTest

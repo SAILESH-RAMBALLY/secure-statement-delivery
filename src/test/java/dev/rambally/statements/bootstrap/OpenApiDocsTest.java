@@ -38,4 +38,20 @@ class OpenApiDocsTest {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
     }
+
+    @Test
+    void every_operation_has_a_summary_and_documented_responses_and_the_download_404_shows_no_token() {
+        String body = RestClient.create("http://localhost:" + port).get().uri("/v3/api-docs").retrieve().body(String.class);
+        tools.jackson.databind.JsonNode root = tools.jackson.databind.json.JsonMapper.builder().build().readTree(body);
+
+        var paths = root.get("paths");
+        assertThat(paths.size()).isGreaterThanOrEqualTo(5);
+        paths.properties().forEach(path -> path.getValue().properties().forEach(op -> {
+            assertThat(op.getValue().has("summary")).as(op.getKey() + " " + path.getKey() + " summary").isTrue();
+            assertThat(op.getValue().get("responses").size()).as(op.getKey() + " " + path.getKey() + " responses").isGreaterThan(0);
+        }));
+        var download = paths.get("/download/{token}").get("get").get("responses");
+        assertThat(download.has("404")).isTrue();
+        assertThat(download.get("404").toString()).doesNotMatch(".*[A-Za-z0-9_-]{43}.*");
+    }
 }

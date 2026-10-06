@@ -25,7 +25,7 @@
     <jacoco.version>0.8.15</jacoco.version>
     <enforcer.version>3.6.3</enforcer.version>
     <!-- Coverage gate; haltOnFailure is flipped to true in the quality-gate slice. -->
-    <jacoco.haltOnFailure>false</jacoco.haltOnFailure>
+    <jacoco.haltOnFailure>true</jacoco.haltOnFailure>
   </properties>
 
   <dependencies>
@@ -281,7 +281,9 @@
                 <rule>
                   <element>PACKAGE</element>
                   <includes>
+                    <include>dev.rambally.statements.domain</include>
                     <include>dev.rambally.statements.domain.*</include>
+                    <include>dev.rambally.statements.application</include>
                     <include>dev.rambally.statements.application.*</include>
                   </includes>
                   <limits>

@@ -6,6 +6,7 @@ import dev.rambally.statements.application.port.in.RedeemDownloadLinkUseCase;
 import dev.rambally.statements.application.port.in.RequestContext;
 import dev.rambally.statements.application.port.in.StatementDownload;
 
+import io.swagger.v3.oas.annotations.Hidden;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -62,11 +63,13 @@ public class DownloadController {
     }
 
     /** Spring would route HEAD to the GET handler and burn a single-use link on a download manager's probe. */
+    @Hidden
     @RequestMapping(path = "/{token}", method = RequestMethod.HEAD)
     public ResponseEntity<String> head() {
         return DownloadProblem.notFound();
     }
 
+    @Hidden
     @RequestMapping(path = "/{token}", method = {RequestMethod.POST, RequestMethod.PUT, RequestMethod.DELETE,
             RequestMethod.PATCH, RequestMethod.OPTIONS})
     public ResponseEntity<String> otherMethods() {
