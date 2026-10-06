@@ -8,3 +8,8 @@ springdoc:
 app:
   crypto:
     dev-fallback-allowed: true
+
+logging:
+  level:
+    # Most verbose application level; the end-to-end token-absence scan runs with this active.
+    dev.rambally: DEBUG

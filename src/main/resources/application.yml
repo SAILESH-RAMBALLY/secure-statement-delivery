@@ -22,6 +22,9 @@ server:
       enabled: false
     # Let Tomcat drain an oversize upload so the client receives the 413 instead of a connection reset.
     max-swallow-size: 12MB
+    threads:
+      # Sized with the download bulkhead: at most 16 downloads x ~20 MiB in flight against a 1 GiB container.
+      max: 48
   error:
     whitelabel:
       enabled: false
@@ -64,6 +67,8 @@ app:
   link:
     ttl: ${APP_LINK_TTL:PT24H}
     max-downloads: ${APP_LINK_MAX_DOWNLOADS:1}
+  download:
+    max-concurrent: ${APP_DOWNLOAD_MAX_CONCURRENT:16}
 
 logging:
   level:

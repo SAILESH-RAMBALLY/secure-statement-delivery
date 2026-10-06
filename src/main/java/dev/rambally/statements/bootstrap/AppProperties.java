@@ -25,7 +25,8 @@ public record AppProperties(
         @Valid @NotNull Storage storage,
         @Valid @NotNull Crypto crypto,
         @Valid @NotNull StatementLimits statement,
-        @Valid @NotNull Link link) {
+        @Valid @NotNull Link link,
+        @Valid @NotNull Download download) {
 
     public record Security(
             @NotBlank String rolesClaim,
@@ -45,5 +46,9 @@ public record AppProperties(
 
     /** Bounds are enforced again by the domain LinkPolicy; these are the configured defaults. */
     public record Link(@NotNull Duration ttl, @Min(1) @Max(10) int maxDownloads) {
+    }
+
+    /** Bulkhead size: each in-flight download may hold ~2x the statement size limit in memory. */
+    public record Download(@Min(1) @Max(256) int maxConcurrent) {
     }
 }
