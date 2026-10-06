@@ -3,9 +3,11 @@ package dev.rambally.statements.bootstrap;
 import java.time.Clock;
 
 import dev.rambally.statements.adapters.out.crypto.LocalKekKeyProvider;
+import dev.rambally.statements.adapters.out.notification.LoggingNotificationAdapter;
 import dev.rambally.statements.adapters.out.storage.FilesystemStatementStorage;
 import dev.rambally.statements.adapters.out.token.SecureRandomTokenGenerator;
 import dev.rambally.statements.application.port.out.KeyProvider;
+import dev.rambally.statements.application.port.out.NotificationPort;
 import dev.rambally.statements.application.port.out.StatementStorage;
 import dev.rambally.statements.application.port.out.TokenGenerator;
 
@@ -49,5 +51,10 @@ public class AdapterConfig {
     @Bean
     TokenGenerator tokenGenerator() {
         return new SecureRandomTokenGenerator();
+    }
+
+    @Bean
+    NotificationPort notificationPort() {
+        return new LoggingNotificationAdapter();
     }
 }

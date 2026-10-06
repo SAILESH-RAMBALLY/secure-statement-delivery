@@ -61,6 +61,9 @@ app:
     dev-fallback-allowed: false
   statement:
     max-size-bytes: 10485760
+  link:
+    ttl: ${APP_LINK_TTL:PT24H}
+    max-downloads: ${APP_LINK_MAX_DOWNLOADS:1}
 
 logging:
   level:

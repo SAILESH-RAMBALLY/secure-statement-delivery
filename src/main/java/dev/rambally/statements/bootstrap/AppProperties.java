@@ -2,6 +2,7 @@ package dev.rambally.statements.bootstrap;
 
 import java.net.URI;
 import java.nio.file.Path;
+import java.time.Duration;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -23,7 +24,8 @@ public record AppProperties(
         @Valid @NotNull Security security,
         @Valid @NotNull Storage storage,
         @Valid @NotNull Crypto crypto,
-        @Valid @NotNull StatementLimits statement) {
+        @Valid @NotNull StatementLimits statement,
+        @Valid @NotNull Link link) {
 
     public record Security(
             @NotBlank String rolesClaim,
@@ -39,5 +41,9 @@ public record AppProperties(
     }
 
     public record StatementLimits(@Min(1024) @Max(52428800) long maxSizeBytes) {
+    }
+
+    /** Bounds are enforced again by the domain LinkPolicy; these are the configured defaults. */
+    public record Link(@NotNull Duration ttl, @Min(1) @Max(10) int maxDownloads) {
     }
 }

@@ -9,6 +9,8 @@ public final class TableCleaner {
     }
 
     public static void deleteAll(JdbcClient jdbc) {
+        jdbc.sql("DELETE FROM download_audit").update();
+        jdbc.sql("DELETE FROM download_link").update();
         jdbc.sql("DELETE FROM statement").update();
     }
 }

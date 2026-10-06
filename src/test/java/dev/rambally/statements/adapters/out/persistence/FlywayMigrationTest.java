@@ -15,11 +15,11 @@ class FlywayMigrationTest {
     private JdbcClient jdbc;
 
     @Test
-    void v1_creates_the_statement_table_on_h2() {
+    void migrations_create_the_application_tables_on_h2() {
         List<String> tables = jdbc.sql("SELECT LOWER(table_name) FROM information_schema.tables WHERE table_schema = 'public'")
                 .query(String.class).list();
 
-        assertThat(tables).contains("statement");
+        assertThat(tables).contains("statement", "download_link", "download_audit");
     }
 
     @Test
@@ -27,6 +27,6 @@ class FlywayMigrationTest {
         List<String> versions = jdbc.sql("SELECT version FROM flyway_schema_history WHERE success = TRUE AND version IS NOT NULL ORDER BY installed_rank")
                 .query(String.class).list();
 
-        assertThat(versions).startsWith("1");
+        assertThat(versions).startsWith("1", "2", "3");
     }
 }
