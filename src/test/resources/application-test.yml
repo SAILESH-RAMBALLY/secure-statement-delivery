@@ -6,3 +6,10 @@ spring:
 
 app:
   public-base-url: https://statements.example.test
+  storage:
+    root: ${java.io.tmpdir}/secure-statements-test/${random.uuid}
+  crypto:
+    # Fixed 32-byte test key (base64 of "test-kek-test-kek-test-kek-test!")
+    kek: dGVzdC1rZWstdGVzdC1rZWstdGVzdC1rZWstdGVzdCE=
+    kek-id: test-kek
+    dev-fallback-allowed: false

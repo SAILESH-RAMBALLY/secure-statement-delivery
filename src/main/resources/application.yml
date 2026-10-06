@@ -9,8 +9,6 @@ spring:
     enabled: true
     locations: classpath:db/migration/common,classpath:db/migration/{vendor}
     validate-on-migrate: true
-    # No migrations exist yet on the walking skeleton; removed in the first persistence slice.
-    check-location: false
 
 server:
   shutdown: graceful
@@ -49,6 +47,14 @@ app:
     roles-claim: roles
     audience: secure-statements
     dev-issuer: http://localhost:8080/dev
+  storage:
+    root: ${APP_DATA_DIR:./data}/statements
+  crypto:
+    kek: ${APP_CRYPTO_KEK:}
+    kek-id: ${APP_CRYPTO_KEK_ID:local-kek-v1}
+    dev-fallback-allowed: false
+  statement:
+    max-size-bytes: 10485760
 
 logging:
   level:

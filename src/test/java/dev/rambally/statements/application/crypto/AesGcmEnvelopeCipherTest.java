@@ -67,7 +67,7 @@ class AesGcmEnvelopeCipherTest {
         AesGcmEnvelopeCipher.Sealed sealed = cipher.seal(pdf, statementId, kekA);
 
         assertThat(sealed.ciphertext()).hasSize(pdf.size() + 16);
-        assertThat(sealed.ciphertext()).doesNotContain("%PDF".getBytes(StandardCharsets.US_ASCII));
+        assertThat(new String(sealed.ciphertext(), StandardCharsets.ISO_8859_1)).doesNotContain("%PDF-");
     }
 
     @Test

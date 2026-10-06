@@ -1,5 +1,10 @@
-# Development conveniences: RSA token issuer at /dev/token and open Swagger UI.
+# Development conveniences: RSA token issuer at /dev/token, open Swagger UI, and a fallback to the
+# built-in key-encryption key when APP_CRYPTO_KEK is unset (with a WARN banner).
 # Every item here is refused by the prod profile guard.
 springdoc:
   api-docs:
     enabled: true
+
+app:
+  crypto:
+    dev-fallback-allowed: true

@@ -8,7 +8,12 @@ import dev.rambally.statements.domain.StatementPeriod;
 public final class DuplicateStatementException extends DomainException {
 
     public DuplicateStatementException(CustomerId customerId, AccountNumber accountNumber, StatementPeriod period) {
+        this(customerId, accountNumber, period, null);
+    }
+
+    public DuplicateStatementException(CustomerId customerId, AccountNumber accountNumber, StatementPeriod period,
+            Throwable cause) {
         super("statement already exists for customer " + customerId + ", account " + accountNumber.masked()
-                + ", period " + period);
+                + ", period " + period, cause);
     }
 }
