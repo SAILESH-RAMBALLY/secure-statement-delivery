@@ -28,7 +28,12 @@ public record AppProperties(
         @Valid @NotNull StatementLimits statement,
         @Valid @NotNull Link link,
         @Valid @NotNull Download download,
-        @Valid @NotNull Demo demo) {
+        @Valid Demo demo) {
+
+    /** The demo section is optional; absent means "seed nothing". */
+    public AppProperties {
+        demo = demo == null ? new Demo(List.of()) : demo;
+    }
 
     public record Security(
             @NotBlank String rolesClaim,

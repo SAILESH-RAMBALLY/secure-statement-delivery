@@ -1,0 +1,59 @@
+package dev.rambally.statements.bootstrap;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.util.List;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.oauth2.jwt.JwtEncoder;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.web.client.RestClient;
+
+/** Over real HTTP, no error path for an unmapped URL echoes the URL, a message or a stack trace. */
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@ActiveProfiles("test")
+class ServerErrorHygieneTest {
+
+    private static final String TOKEN_LIKE = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOP-";
+
+    @LocalServerPort
+    int port;
+
+    @Autowired
+    JwtEncoder jwtEncoder;
+
+    @Autowired
+    AppProperties properties;
+
+    private RestClient client() {
+        return RestClient.builder().baseUrl("http://localhost:" + port)
+                .defaultStatusHandler(status -> true, (request, response) -> { }).build();
+    }
+
+    @Test
+    void unmapped_paths_with_a_token_like_segment_never_echo_it_authenticated_or_not() {
+        String customer = TestTokens.mint(jwtEncoder, properties, "C-1001", List.of("CUSTOMER"));
+
+        ResponseEntity<String> anonymous = client().get().uri("/nothing/" + TOKEN_LIKE).retrieve().toEntity(String.class);
+        ResponseEntity<String> authenticated = client().get().uri("/nothing/" + TOKEN_LIKE)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + customer).retrieve().toEntity(String.class);
+        ResponseEntity<String> apiTypo = client().get().uri("/api/statementz/" + TOKEN_LIKE)
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + customer).retrieve().toEntity(String.class);
+        ResponseEntity<String> downloadExtra = client().get().uri("/download/" + TOKEN_LIKE + "/extra").retrieve().toEntity(String.class);
+
+        assertThat(anonymous.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(authenticated.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(apiTypo.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(downloadExtra.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        for (ResponseEntity<String> response : List.of(anonymous, authenticated, apiTypo, downloadExtra)) {
+            assertThat(response.getBody()).doesNotContain(TOKEN_LIKE).doesNotContain("Exception").doesNotContain("\tat ");
+        }
+        assertThat(downloadExtra.getBody()).contains("\"instance\":\"/download\"");
+    }
+}

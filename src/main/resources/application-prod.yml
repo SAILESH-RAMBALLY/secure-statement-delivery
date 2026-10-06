@@ -1,0 +1,33 @@
+# Production profile. Every development convenience is off, and ProdGuard refuses to start if any of these
+# values is missing or still points at a development default.
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${APP_JWT_ISSUER_URI}
+
+app:
+  public-base-url: ${APP_PUBLIC_BASE_URL}
+  crypto:
+    kek: ${APP_CRYPTO_KEK}
+    dev-fallback-allowed: false
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+
+logging:
+  structured:
+    format:
+      console: ecs
+  level:
+    dev.rambally: INFO

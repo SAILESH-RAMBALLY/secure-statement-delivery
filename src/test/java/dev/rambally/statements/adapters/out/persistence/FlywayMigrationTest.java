@@ -27,6 +27,6 @@ class FlywayMigrationTest {
         List<String> versions = jdbc.sql("SELECT version FROM flyway_schema_history WHERE success = TRUE AND version IS NOT NULL ORDER BY installed_rank")
                 .query(String.class).list();
 
-        assertThat(versions).startsWith("1", "2", "3");
+        assertThat(versions).containsExactly("1", "2", "3", "4");
     }
 }
