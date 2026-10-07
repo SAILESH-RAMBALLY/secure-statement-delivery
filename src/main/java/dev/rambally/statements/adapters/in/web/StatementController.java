@@ -15,6 +15,7 @@ import dev.rambally.statements.application.port.in.ListStatementsUseCase;
 import dev.rambally.statements.domain.StatementId;
 
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
@@ -43,11 +44,12 @@ public class StatementController {
     }
 
     @Operation(summary = "List my statements", description = "Newest period first. Identity comes from the JWT subject; "
-            + "a customerId query parameter is rejected rather than ignored.")
+            + "a customerId query parameter is rejected rather than silently ignored.")
     @GetMapping
     public List<StatementSummaryResponse> list(Principal actor,
-            @RequestParam(name = "customerId", required = false) String customerId) {
-        if (customerId != null) {
+            @Parameter(hidden = true) @RequestParam(name = "customerId", required = false) String customerId) {
+        // Blank means "not supplied" (Swagger UI and some clients send an empty value for a cleared field).
+        if (customerId != null && !customerId.isBlank()) {
             throw RequestInputs.badRequest("customerId is derived from the token and cannot be supplied");
         }
         return list.listFor(actor).stream().map(StatementSummaryResponse::of).toList();

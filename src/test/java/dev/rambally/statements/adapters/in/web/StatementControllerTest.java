@@ -169,6 +169,15 @@ class StatementControllerTest {
     }
 
     @Test
+    void list_treats_an_empty_customer_id_parameter_as_absent() throws Exception {
+        // Swagger UI sends `customerId=` for a touched-then-cleared field; that is not an attempt to impersonate.
+        mvc.perform(get("/api/statements").param("customerId", "").with(customer("C-1001")))
+                .andExpect(status().isOk());
+
+        assertThat(list.last.customerId()).isEqualTo(new CustomerId("C-1001"));
+    }
+
+    @Test
     void list_links_returns_status_and_counts_only_and_404_for_not_owned() throws Exception {
         mvc.perform(get("/api/statements/" + OWNED + "/links").with(customer("C-1001")))
                 .andExpect(status().isOk())
