@@ -54,4 +54,23 @@ class OpenApiDocsTest {
         assertThat(download.has("404")).isTrue();
         assertThat(download.get("404").toString()).doesNotMatch(".*[A-Za-z0-9_-]{43}.*");
     }
+
+    @Test
+    void the_caller_identity_is_never_offered_as_request_input() {
+        String body = RestClient.create("http://localhost:" + port).get().uri("/v3/api-docs").retrieve().body(String.class);
+        tools.jackson.databind.JsonNode paths = tools.jackson.databind.json.JsonMapper.builder().build().readTree(body).get("paths");
+
+        // The admin upload's customerId names whose statement it is (a multipart field), not the caller.
+        paths.properties().forEach(path -> path.getValue().properties().forEach(op -> {
+            var params = op.getValue().get("parameters");
+            if (params != null) {
+                boolean upload = path.getKey().equals("/api/admin/statements");
+                params.forEach(param -> assertThat(param.get("name").asString())
+                        .as(op.getKey() + " " + path.getKey())
+                        .isNotIn(upload ? new String[] {"admin", "actor"} : new String[] {"customerId", "admin", "actor"}));
+            }
+        }));
+        assertThat(paths.get("/api/statements").get("get").has("parameters")).isFalse();
+        assertThat(paths.get("/api/statements/{statementId}/links").get("post").get("parameters").size()).isEqualTo(1);
+    }
 }
