@@ -94,8 +94,9 @@ public class DownloadController {
      */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<String> anyFailure(Exception ex) {
-        if (!(ex instanceof LinkNotRedeemableException)) {
-            log.error("download failed with {}", ex.getClass().getSimpleName(), ex);
+        Throwable fault = ex instanceof LinkNotRedeemableException refused ? refused.getCause() : ex;
+        if (fault != null) {
+            log.error("download failed with {}", fault.getClass().getSimpleName(), fault);
         }
         return DownloadProblem.notFound();
     }

@@ -109,15 +109,21 @@ class StatementControllerTest {
     @Autowired
     StubList list;
 
+    @org.junit.jupiter.api.BeforeEach
+    void resetStubs() {
+        issue.last = null;
+        list.last = null;
+    }
+
     private static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor customer(String subject) {
         return jwt().jwt(j -> j.subject(subject)).authorities(new SimpleGrantedAuthority("ROLE_CUSTOMER"));
     }
 
     @Test
-    void issue_link_returns_201_with_absolute_url_and_location() throws Exception {
+    void issue_link_returns_201_with_absolute_url() throws Exception {
         mvc.perform(post("/api/statements/" + OWNED + "/links").with(customer("C-1001")))
                 .andExpect(status().isCreated())
-                .andExpect(header().string("Location", "/api/links/" + LINK))
+                .andExpect(header().doesNotExist("Location"))
                 .andExpect(jsonPath("$.linkId").value(LINK.toString()))
                 .andExpect(jsonPath("$.url").value("https://statements.example.test/download/" + TOKEN))
                 .andExpect(jsonPath("$.expiresAt").value("2026-10-07T10:00:00Z"))

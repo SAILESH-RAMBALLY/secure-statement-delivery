@@ -98,4 +98,27 @@ class DownloadConcurrencyFilterTest {
         assertThat(filter.shouldNotFilter(api)).isTrue();
         assertThat(filter.shouldNotFilter(download())).isFalse();
     }
+
+    @Test
+    void the_body_is_flushed_while_the_permit_is_still_held() throws Exception {
+        DownloadConcurrencyFilter filter = new DownloadConcurrencyFilter(1, registry);
+        java.util.concurrent.atomic.AtomicBoolean secondRequestRefusedDuringFlush = new java.util.concurrent.atomic.AtomicBoolean();
+        MockHttpServletResponse response = new MockHttpServletResponse() {
+            @Override
+            public void flushBuffer() {
+                MockHttpServletResponse probe = new MockHttpServletResponse();
+                try {
+                    filter.doFilter(download(), probe, new MockFilterChain());
+                } catch (Exception e) {
+                    throw new IllegalStateException(e);
+                }
+                secondRequestRefusedDuringFlush.set(probe.getStatus() == 503);
+                super.flushBuffer();
+            }
+        };
+
+        filter.doFilter(download(), response, new MockFilterChain());
+
+        assertThat(secondRequestRefusedDuringFlush).isTrue();
+    }
 }

@@ -16,6 +16,22 @@ public final class InMemoryStatementRepository implements StatementRepository {
 
     private final Map<StatementId, Statement> byId = new ConcurrentHashMap<>();
     private RuntimeException failNextSaveWith;
+    private RuntimeException failAfterNextSaveWith;
+
+    /** Test hook: the next save is stored and then reports a failure, like a commit whose reply was lost. */
+    public void failAfterNextSaveWith(RuntimeException e) {
+        this.failAfterNextSaveWith = e;
+    }
+
+    /** Test hook: replace a stored statement, for example to give it a different content hash. */
+    public void replace(Statement statement) {
+        byId.put(statement.id(), statement);
+    }
+
+    /** Test hook: remove a stored statement while links to it remain. */
+    public void remove(StatementId id) {
+        byId.remove(id);
+    }
 
     public void failNextSaveWith(RuntimeException e) {
         this.failNextSaveWith = e;
@@ -36,6 +52,11 @@ public final class InMemoryStatementRepository implements StatementRepository {
             throw new DuplicateStatementException(statement.customerId(), statement.accountNumber(), statement.period());
         }
         byId.put(statement.id(), statement);
+        if (failAfterNextSaveWith != null) {
+            RuntimeException e = failAfterNextSaveWith;
+            failAfterNextSaveWith = null;
+            throw e;
+        }
     }
 
     @Override

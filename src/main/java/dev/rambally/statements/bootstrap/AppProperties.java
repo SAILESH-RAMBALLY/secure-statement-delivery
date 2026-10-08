@@ -48,7 +48,7 @@ public record AppProperties(
     public record Crypto(String kek, @NotBlank String kekId, boolean devFallbackAllowed) {
     }
 
-    /** Upper bound is the schema CHECK and the multipart limit (10 MiB); the three must agree (ADR-004). */
+    /** Upper bound is the schema CHECK and the multipart limit (10 MiB); the three must agree. */
     public record StatementLimits(@Min(1024) @Max(10485760) long maxSizeBytes) {
     }
 

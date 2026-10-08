@@ -30,6 +30,7 @@ import dev.rambally.statements.domain.LinkId;
 import dev.rambally.statements.domain.LinkPolicy;
 import dev.rambally.statements.domain.LinkToken;
 import dev.rambally.statements.domain.RedemptionOutcome;
+import dev.rambally.statements.domain.Sha256;
 import dev.rambally.statements.domain.Statement;
 import dev.rambally.statements.domain.StatementId;
 import dev.rambally.statements.domain.StatementPeriod;
@@ -311,5 +312,56 @@ class RedeemDownloadLinkServiceTest {
         Instant justBefore = link.expiresAt().minusSeconds(1);
 
         assertThat(service(audit, Clock.fixed(justBefore, ZoneOffset.UTC)).redeem(TOKEN.value(), CTX).pdf()).isEqualTo(pdf);
+    }
+
+    @Test
+    void an_infrastructure_fault_keeps_its_cause_for_the_web_adapter_to_log() {
+        issue();
+        IllegalStateException fault = new IllegalStateException("database unreachable");
+        links.failNextFindWith(fault);
+
+        assertThatThrownBy(() -> service().redeem(TOKEN.value(), CTX))
+                .isInstanceOf(LinkNotRedeemableException.class)
+                .hasCause(fault);
+    }
+
+    @Test
+    void a_revocation_that_lands_during_decryption_is_audited_as_REVOKED_not_LOST_RACE() {
+        DownloadLink link = issue();
+        links.beforeNextConsume(() -> links.revoke(link.id(), Fixtures.NOW));
+
+        assertThatThrownBy(() -> service().redeem(TOKEN.value(), CTX))
+                .extracting(e -> ((LinkNotRedeemableException) e).outcome())
+                .isEqualTo(RedemptionOutcome.REVOKED);
+
+        assertAudited(RedemptionOutcome.REVOKED, link);
+    }
+
+    @Test
+    void a_plaintext_that_does_not_match_the_stored_digest_is_INTEGRITY_FAILED_and_not_consumed() {
+        DownloadLink link = issue();
+        Statement s = statement;
+        statements.replace(new Statement(s.id(), s.customerId(), s.accountNumber(), s.period(), s.sizeBytes(),
+                Sha256.of("something else".getBytes(java.nio.charset.StandardCharsets.UTF_8)), s.storageKey(),
+                s.envelope(), s.createdAt()));
+
+        assertThatThrownBy(() -> service().redeem(TOKEN.value(), CTX))
+                .extracting(e -> ((LinkNotRedeemableException) e).outcome())
+                .isEqualTo(RedemptionOutcome.INTEGRITY_FAILED);
+
+        assertThat(links.findById(link.id()).orElseThrow().downloadCount()).isZero();
+        assertAudited(RedemptionOutcome.INTEGRITY_FAILED, link);
+    }
+
+    @Test
+    void a_link_whose_statement_row_is_gone_is_STORAGE_MISSING() {
+        DownloadLink link = issue();
+        statements.remove(statement.id());
+
+        assertThatThrownBy(() -> service().redeem(TOKEN.value(), CTX))
+                .extracting(e -> ((LinkNotRedeemableException) e).outcome())
+                .isEqualTo(RedemptionOutcome.STORAGE_MISSING);
+
+        assertAudited(RedemptionOutcome.STORAGE_MISSING, link);
     }
 }

@@ -1,184 +1,336 @@
 # Secure Statement Delivery
 
-A Spring Boot 4.1 / Java 21 service that stores customer account statements as **encrypted PDF files** and
-issues **secure, time-limited, single-use download links** to customers.
+This is my submission for the Secure File Statement Delivery brief:
 
-> Brief: "Develop a system to store customer account statements as PDF files and provide secure,
-> time-limited download links to customers."
+> Develop a system to store customer account statements as PDF files and provide secure, time-limited
+> download links to customers.
 
-- Hexagonal architecture in one module, enforced by ArchUnit; the domain and application layers compile against the JDK alone.
-- AES-256-GCM envelope encryption at rest behind a `KeyProvider` port.
-- Links are 256-bit capability tokens; only their SHA-256 is stored. Atomic single-use via one conditional `UPDATE`, proven by 64-thread races on H2 and PostgreSQL.
-- Every download failure is one byte-identical 404; the real reason lives in an append-only audit table.
-- JWT resource server with a fail-closed default chain; a prod guard refuses to start with any development artefact active.
-- Built test-first: 305 fast tests without Docker, plus 27 PostgreSQL integration tests via Testcontainers; 96% line coverage.
+It's a Spring Boot 4.1 service written in Java 21. An administrator uploads a customer's statement, and it is
+encrypted before it touches the disk. The customer can then ask for a download link. Each link works once,
+expires after 24 hours, and can be cancelled at any time. Everything is exposed as a REST API with Swagger UI,
+and the whole thing runs in Docker.
 
-## Quick start
+The first two sections get it running. The rest explains how it's built and why.
 
-Requires Docker. No local JDK is needed for this path.
+## Running it
+
+You only need Docker for this.
 
 ```bash
 docker build -t secure-statements .
 docker run --rm -p 127.0.0.1:8080:8080 -v statements-data:/data secure-statements
 ```
 
-Open <http://localhost:8080/swagger-ui.html>. Bind to loopback as shown: the dev profile's token issuer must
-not be reachable from the network. The image defaults to the `h2,dev,demo` profiles: file-based H2
-and filesystem storage on the `/data` volume, a development token issuer at `POST /dev/token`, and five seeded
-demo statements for customers `C-1001` and `C-2002`.
+Then open http://localhost:8080/swagger-ui.html.
 
-With PostgreSQL instead of H2:
+Out of the box the image runs in a self-contained demo mode. It uses an embedded H2 database and stores files
+on the `/data` volume, so nothing else needs to be installed. It also seeds five sample statements for two
+customers, `C-1001` and `C-2002`, and switches on a small development endpoint that hands out login tokens.
+That endpoint is why the port is bound to `127.0.0.1` above: it should never be reachable from a network.
+
+To run against PostgreSQL instead:
 
 ```bash
-cp .env.example .env            # optionally set APP_CRYPTO_KEK=$(openssl rand -base64 32)
 docker compose up --build
 ```
 
-Without Docker, with JDK 21: `./mvnw spring-boot:run -Dspring-boot.run.profiles=h2,dev,demo`.
-
-## Try it in 60 seconds
-
-1. `POST /dev/token` with `{"subject":"C-1001","roles":["CUSTOMER"]}`; paste the token into Swagger's **Authorize** button.
-2. `GET /api/statements` lists the seeded statements. `POST /api/statements/{statementId}/links` issues a link; copy the `url`.
-3. Download it: `curl -OJ "<url>"` saves `statement-7890-2026-09.pdf` (file names carry only the last four account digits).
-4. Download it again: `curl -i "<url>"` returns a constant `404 Statement not available`. The link was single-use.
-5. `GET /api/statements/{statementId}/links` shows the link as `EXHAUSTED`. `DELETE /api/links/{linkId}` revokes a link.
-6. To upload your own PDF, mint `{"subject":"ops-admin","roles":["ADMIN"]}` and `POST /api/admin/statements`
-   (multipart: `file`, `customerId`, `accountNumber`, `period` as `yyyy-MM`).
-
-The audit trail is in the `download_audit` table: `LINK_ISSUED`, `SUCCESS`, `EXHAUSTED`, `LINK_REVOKED`, `REVOKED`,
-`UNKNOWN_TOKEN`, and so on. The app log shows delivery with the token redacted:
-`Download link <id> delivered to http://localhost:8080/download/[redacted]`. Neither the token nor the customer id is logged.
-
-`scripts/smoke.sh [base-url]` drives this whole flow against a running instance and checks every step.
-
-## Build and test
-
-Requires JDK 21. Docker is needed only for the `*IT` integration tests (Testcontainers PostgreSQL).
+Compose starts PostgreSQL first and waits until it's healthy before starting the app. It works without any
+extra configuration. If you want to use your own encryption key, set it before starting:
 
 ```bash
-./mvnw test              # unit, slice, contract and H2 end-to-end tests: no Docker needed
-./mvnw verify            # adds the PostgreSQL integration tests and enforces the coverage gate
-./mvnw verify -DskipITs  # verify without Docker
+export APP_CRYPTO_KEK=$(openssl rand -base64 32)
+docker compose up --build
 ```
 
-Reports: `target/surefire-reports`, `target/failsafe-reports`, `target/site/jacoco/index.html`.
-CI (`.github/workflows/ci.yml`) runs `./mvnw verify`, builds the image, starts it with the compose hardening
-(read-only root, no capabilities, loopback port) and runs `scripts/smoke.sh` against it.
+If you have JDK 21 installed you can also run it without Docker:
+`./mvnw spring-boot:run -Dspring-boot.run.profiles=h2,dev,demo`.
 
-## API
+## Trying it out
 
-| Method and path | Who | Result |
+In Swagger:
+
+1. Under **Development**, call `POST /dev/token` with `{"subject":"C-1001","roles":["CUSTOMER"]}`. Copy the
+   token, click **Authorize** at the top of the page and paste it in.
+2. `GET /api/statements` lists C-1001's statements. Pick one and copy its `statementId`.
+3. `POST /api/statements/{statementId}/links` gives you a `url`. Open it in a browser tab and the PDF
+   downloads, with a name like `statement-7890-2026-09.pdf` (the last four digits of the account and the
+   statement's month).
+4. Refresh that tab. You'll get `404 Statement not available`, because the link has already been used.
+5. `GET /api/statements/{statementId}/links` now shows that link as `EXHAUSTED`. You can revoke a fresh
+   link with `DELETE /api/links/{linkId}`, after which it also returns 404.
+6. To upload a statement, get a token for `{"subject":"ops-admin","roles":["ADMIN"]}` and use
+   `POST /api/admin/statements` with a PDF, a `customerId`, an `accountNumber` and a `period` such as `2026-05`.
+
+If you log in as `C-2002` and try to use one of C-1001's statements, you get a 404, the same as if it didn't
+exist.
+
+There's also a script that runs this whole journey and checks each step:
+
+```bash
+scripts/smoke.sh                    # against http://localhost:8080
+scripts/smoke.sh http://other:8080  # or anywhere else
+```
+
+## Building and running the tests
+
+You need JDK 21. Docker is only needed for the PostgreSQL integration tests.
+
+```bash
+./mvnw test              # 324 unit, slice and end-to-end tests on H2, no Docker needed
+./mvnw verify            # adds 27 PostgreSQL integration tests and the coverage check
+./mvnw verify -DskipITs  # the full build without Docker
+```
+
+Test reports end up in `target/surefire-reports` and `target/failsafe-reports`, and the coverage report in
+`target/site/jacoco/index.html`. The build fails if coverage drops below 90% of lines and 85% of branches
+in the domain and application code, or 80% of lines overall. Right now the domain and application code is at
+about 97% of lines and 96% of branches, and the whole code base at 96% and 93%.
+
+The GitHub Actions workflow runs `./mvnw verify` and builds the image. It then runs the smoke script against
+the image on its own (with a read-only filesystem and no Linux capabilities) and against the compose stack on
+PostgreSQL, and checks that the image refuses to start in production mode when nothing is configured.
+
+## The API
+
+| Endpoint | Who can call it | What it does |
 |---|---|---|
-| `POST /api/admin/statements` (multipart) | ADMIN | 201 + `Location`; 400 / 403 / 409 / 413 / 415 |
-| `GET /api/statements` | the JWT subject | own statements, newest first; `?customerId` is rejected with 400 |
-| `POST /api/statements/{id}/links` | owner only (the response carries the credential) | 201 `{linkId, url, expiresAt, maxDownloads}`; 404 if not yours |
-| `GET /api/statements/{id}/links` | owner or ADMIN | status and counts per link; never tokens or hashes |
-| `DELETE /api/links/{linkId}` | owner or ADMIN | 204, idempotent; 404 if not yours |
-| `GET /download/{token}` | public: the token is the credential | 200 PDF, or one constant 404 (infrastructure faults included, audited as `INTERNAL_ERROR`); 503 when saturated |
-| `HEAD /download/{token}` | public | constant 404, never consumes the link |
-| `POST /dev/token` | dev profile only | RS256 JWT for Swagger and curl |
-| `/actuator/health`, `/liveness`, `/readiness` | public | readiness includes the database |
-| `/actuator/metrics/**`, `/actuator/prometheus` | ADMIN | `uri` tag is always `/download/{token}` |
+| `POST /api/admin/statements` | admins | Upload a statement PDF for a customer. |
+| `GET /api/statements` | any logged-in customer | List your own statements, newest first. |
+| `POST /api/statements/{id}/links` | the statement's owner | Create a download link. |
+| `GET /api/statements/{id}/links` | the owner or an admin | See each link's status and download count. |
+| `DELETE /api/links/{linkId}` | the owner or an admin | Revoke a link. Doing it twice is fine. |
+| `GET /download/{token}` | anyone with the link | Download the PDF. |
+| `POST /dev/token` | anyone, dev mode only | Get a login token for testing. |
+| `/actuator/health` | anyone | Health check, used by Docker. |
+| `/actuator/prometheus` | admins | Metrics. |
 
-"Not yours" and "does not exist" are deliberately indistinguishable everywhere.
+When something isn't yours, the API says it doesn't exist rather than saying you aren't allowed. That way you
+can't use the API to find out whether someone else's statement or link exists.
 
-## Architecture
+## How the code is organised
+
+I used a hexagonal (ports and adapters) structure, kept in a single Maven module:
 
 ```
 src/main/java/dev/rambally/statements
-├── domain/         pure Java: Statement, DownloadLink, value objects, sealed DomainException
-├── application/    use cases (one interface per driving port), driven ports, AesGcmEnvelopeCipher
-│   ├── port/in     UploadStatement, IssueDownloadLink, RedeemDownloadLink, ListStatements, ListLinks, RevokeDownloadLink
-│   └── port/out    StatementRepository, DownloadLinkRepository, StatementStorage, KeyProvider, AuditLog, NotificationPort, TokenGenerator
-├── adapters/in/    REST controllers, JwtPrincipalResolver, ApiExceptionHandler, DownloadConcurrencyFilter, DevTokenController
-├── adapters/out/   JDBC repositories and audit log, filesystem storage, local KEK provider, logging notifier, token generator
-└── bootstrap/      Spring only: SecurityConfig, UseCaseConfig, AdapterConfig, AppProperties, ProdGuard, OpenAPI, metrics, demo seed
+├── domain        plain Java: Statement, DownloadLink, the value objects and the business rules
+├── application   the use cases, the interfaces ("ports") they need, and the encryption code
+├── adapters/in   everything that calls into the application: REST controllers, request handling
+├── adapters/out  everything the application calls out to: the database, file storage, keys, logging
+└── bootstrap     Spring configuration that wires it all together
 ```
 
-`HexagonalArchitectureTest` enforces: domain depends only on the JDK; application only on domain and the
-JDK; no Spring, Jakarta or SLF4J in either; adapter slices are independent of each other; inbound adapters
-depend on driving ports and never on service classes; nothing outside bootstrap depends on bootstrap;
-services are constructed only in bootstrap; no field injection.
+The domain and application packages have no Spring in them at all. They don't know whether statements live
+on disk or in S3, or whether the database is H2 or PostgreSQL. They only see interfaces such as
+`StatementRepository`, `StatementStorage` and `KeyProvider`. The adapters implement those interfaces, and
+`UseCaseConfig` is the one place that decides which implementation goes where.
 
-## Security model
+I didn't want this to be a convention people have to remember, so `HexagonalArchitectureTest` checks it on
+every build. If someone imports Spring into the domain, or makes a controller call a service class directly
+instead of going through its interface, the build fails.
 
-| Threat | Control | Proving test |
-|---|---|---|
-| Stolen storage volume | AES-256-GCM per statement; envelope (wrapped DEK, IVs) is in the database, not beside the file | `AesGcmEnvelopeCipherTest`, `EndToEndH2Test` (no `%PDF-` on disk) |
-| Stolen database dump | Only token hashes and wrapped keys are stored; KEK is in the environment or a KMS | `IssueDownloadLinkServiceTest.stored_link_holds_hash_not_token` |
-| Guessing links | 256-bit random tokens; constant 404 for every failure | `DownloadControllerTest.every_redemption_outcome_returns_byte_identical_404_problem_detail` |
-| Replaying a leaked link | Single-use by default (configurable 1 to 10), 24 h TTL, revocable, HEAD never consumes | `DownloadLinkConcurrencyIT`, `ParallelDownloadIT`, `LinkLifecycleHttpTest` |
-| Tampered or swapped ciphertext | GCM tag verified before the first byte; AAD binds statement id and format | `AesGcmEnvelopeCipherTest` tamper and swap cases |
-| Token leaking via logs or metrics | Redacted `toString`, redacting notifier (no customer ids either), templated `uri` tag, no access log | `EndToEndH2Test` (scans captured logs and every meter tag, with positive controls) |
-| Token leaking via error bodies | `instance` fixed to `/api` or `/download`; details are reason phrases | `ApiExceptionHandlerTest`, `ServerErrorHygieneTest` |
-| Forged `Host` header | Links built from `APP_PUBLIC_BASE_URL`, never from `Host`; in prod `X-Forwarded-*` is trusted only from the proxy, for the audit client IP and HSTS | `PublicBaseUrlTest`, `IssueDownloadLinkServiceTest` |
-| Horizontal access (IDOR) | Identity from the JWT subject only; ownership checked in services; 404 for not-yours; admins cannot mint customer links | `StatementControllerTest`, `IssueDownloadLinkServiceTest`, `RevokeDownloadLinkServiceTest` |
-| Token minted for another service | Audience required and validated in every profile; `ProdGuard` refuses to start without one | `JwtNegativeHttpTest`, `ProdGuardTest` |
-| Misattributed admin actions | Issue and revoke audit rows carry `actor_id` separately from the customer | `RevokeDownloadLinkServiceTest`, `JdbcAuditLogTest` |
-| Forgotten security rule | No-matcher default chain ends in `denyAll` | `SecurityConfigTest` |
-| Dev artefacts in production | `ProdGuard` refuses the dev key, blank key, http base URL, H2, dev/demo profiles, open Swagger | `ProdGuardTest` |
-| Audit tampering or loss | `REQUIRES_NEW` writes that never throw; PostgreSQL trigger forbids UPDATE/DELETE/TRUNCATE | `JdbcAuditLogTest`, `DownloadAuditAppendOnlyIT` |
-| Memory exhaustion via downloads | 10 MiB cap, bulkhead filter holding its permit until the body is written, 503 + `Retry-After` | `DownloadConcurrencyFilterTest` |
+I considered splitting it into separate Maven modules, which would make the boundaries physical. For a
+service with six use cases that felt like a lot of build ceremony, and the architecture test gives the same
+guarantee more cheaply. If the service grew into several areas I'd split it then.
 
-## The hard problems
+Every outbound interface (storage, database, keys, audit, notifications) already has at least two
+implementations, an in-memory one for tests and a real one. So swapping file storage for S3, or the local key for a cloud key service, means
+writing one new class and changing one line of configuration.
 
-- **Atomic single-use under concurrency.** One `UPDATE ... WHERE revoked_at IS NULL AND expires_at > :now AND
-  download_count < max_downloads`; the update count is the verdict. `DownloadLinkPredicateParityTest` proves the
-  SQL predicate agrees with the domain rule over a state matrix including the exact expiry instant.
-- **Uniform 404 without losing diagnostics.** The controller returns one literal body for every failure and
-  the audit adapter records the real outcome in its own transaction.
-- **Streaming versus integrity.** Bounded-buffer decryption with a size cap and a bulkhead, chosen over
-  streaming so a tampered file can never produce a partial 200 (ADR-004).
-- **Decrypt before consume.** A bank-side fault never burns the customer's one download.
-- **Public chain beside a JWT chain.** Explicit matchers for the public paths, a fail-closed default for the rest.
+## Design decisions
+
+### Plain SQL instead of JPA
+
+There are three tables and two main objects, and the most important operation in the whole system is a
+single SQL statement that uses up a download link. I wrote the persistence with Spring's `JdbcClient` and
+Flyway migrations rather than JPA. The domain objects are immutable records built straight from the query
+results, so there's no separate entity layer and no mapping code.
+
+The same SQL runs on H2 (in PostgreSQL mode) and on real PostgreSQL. I wrote the repository tests once, as
+abstract "contract" tests, and run them against an in-memory fake, against H2, and against PostgreSQL in a
+Testcontainer. If the fake I use in fast tests ever behaves differently from the real database, those tests
+catch it.
+
+### The link token is the password
+
+A download link has to work without the customer being logged in, for example when it's opened from an
+email. So the random part of the link is effectively a one-time password: 32 bytes from a secure random
+generator.
+
+The database only ever stores a SHA-256 hash of the token, never the token itself. So a copy of the database
+is no use for downloading anything. The token only appears in three places: the API response that creates
+the link, the notification sent to the customer, and the download URL. I took care that it never ends up in
+logs, metrics, error messages or the audit table, and there's a test that checks the logs and every metric
+after a full download.
+
+### Every failure looks the same
+
+If a download link is unknown, expired, revoked, already used, or the file has been tampered with, the
+customer always gets the same 404 with the same body. Different messages would let anyone holding a leaked
+link work out what state it's in. The real reason is still recorded, in an audit table that only the
+application writes to. On PostgreSQL a database trigger stops anyone updating or deleting audit rows.
+
+Audit writes run in their own transaction, so they survive even if the main operation is rolled back. They
+also never fail the customer's request. If the audit table is unavailable, the error is logged and counted
+in a metric instead.
+
+### Using up a link safely when two requests arrive at once
+
+Reading the count and then incrementing it would let two requests that arrive together both pass the check.
+So the check and the increment happen in one SQL statement:
+
+```sql
+UPDATE download_link
+   SET download_count = download_count + 1, last_downloaded_at = :now
+ WHERE id = :id AND revoked_at IS NULL AND expires_at > :now AND download_count < max_downloads
+```
+
+If it updates one row, the download goes ahead. If it updates none, someone else got there first. The
+database's row lock takes care of the rest. A test fires 64 threads at the same link at once, on both H2 and PostgreSQL, and checks that only one
+succeeds. Another does the same over HTTP.
+
+### Decrypt first, then use up the link
+
+The service reads and decrypts the file before it uses up the link. If the
+file is missing or the decryption key is wrong, that's the bank's fault, and it shouldn't cost the customer
+their one download. The downside is that in a race several requests might decrypt the file and then all but
+one lose. Statements are capped at 10 MB, so that wasted work is small.
+
+### Not streaming the download
+
+I'd normally stream a file download rather than loading it all into memory. Here that conflicts with the
+encryption. AES-GCM can only confirm that a file hasn't been tampered with once it has read all of it. If I
+streamed, a tampered file would already be half sent before the check failed, and the customer would get a
+broken download instead of the clean 404.
+
+So the service decrypts the whole statement in memory, checks it, and only then sends it. That's safe
+because uploads are limited to 10 MB, and a filter caps the number of downloads in progress at 16. If more
+arrive, they get a 503 with a `Retry-After` header. If statements ever got much bigger, the fix would be to
+encrypt them in chunks, each with its own check. The database already records an encryption format version,
+so a second format could sit alongside the first.
+
+### Encryption at rest
+
+Each statement is encrypted with AES-256-GCM using its own random key. That key is then encrypted with a
+master key, the key-encryption key, which lives outside the database (an environment variable here, a
+cloud key service in production). The encrypted file goes to storage, while the encrypted key and the other
+details needed to decrypt it go in the database row. Someone who steals the files alone, or the database
+alone, can't read anything.
+
+The encryption is tied to the statement's id, so a file can't be swapped for another statement's file
+without the check failing. The file's check leaves out the master key's id; only the small per-statement key
+is bound to it. That means you can rotate the master key by re-encrypting those small keys, without touching
+any files. A test covers this.
+
+Locally, if no master key is set, the service falls back to a built-in development key and prints a large
+warning. In production it refuses to start with that key, or with no key at all.
+
+### Security configuration
+
+There are two Spring Security filter chains. The first covers the public paths: the download URL, health
+checks, Swagger, and the development token endpoint. The second covers everything else. It requires a valid
+login token and ends with a rule that denies anything not explicitly allowed. That means a new endpoint is
+closed until someone decides who can use it, rather than open because someone forgot.
+
+Login tokens are standard JWTs. In development the service signs its own with an RSA key it generates at
+startup. In production it checks them against the bank's identity provider, and it insists the token was
+issued for this service specifically. A token meant for some other bank system is rejected. The caller's
+identity always comes from the token, never from anything in the request. An admin can upload statements and
+revoke links but can't create a download link for a customer, because that would hand them the customer's
+password to the file.
+
+Production startup is guarded. If the service starts with the `prod` profile and finds the development key,
+no key, an `http` address instead of `https`, an H2 database, the demo data switched on, Swagger switched
+on, no token audience, or no trusted load balancer, it refuses to start. It lists everything that's wrong in one message, before it has touched the
+database.
+
+### Where links point, and how customers get them
+
+Download links are built from a configured base address (`APP_PUBLIC_BASE_URL`), never from the incoming
+request's `Host` header. Otherwise someone could send a request with a forged header and get the service to
+hand out links pointing at their own site.
+
+Sending the link to the customer happens through a `NotificationPort` interface. The only implementation
+here writes a log line with the token blanked out. In a real deployment it would be swapped for one that sends
+an email or SMS, without touching the rest of the code.
+
+## How I used TDD
+
+I built this test-first, one thin slice of functionality at a time. Each slice went red, green, refactor: a failing test for the
+behaviour I wanted, just enough code to pass it, then a clean-up with the tests still green. The git history shows this: almost every change is a pair of commits, a `test:`
+commit with the failing tests and then a `feat:` or `fix:` commit that makes them pass.
+
+I worked through the slices in this order:
+
+1. A walking skeleton: an app that starts, a health check, the security chains, the architecture test and
+   the Docker build, all with nothing in them yet.
+2. The domain objects and their rules, such as when a link counts as expired.
+3. Encryption and token generation.
+4. Uploading a statement, first against in-memory fakes and then against the real database and file system.
+5. The upload endpoint over HTTP, with logins.
+6. Creating links and listing statements.
+7. Using up a link, including the concurrency tests.
+8. The public download endpoint, and the first full end-to-end test.
+9. Listing and revoking links.
+10. The demo data.
+11. Production hardening.
+12. The coverage gate and the remaining documentation.
+
+Doing it in that order meant there was a working, runnable service from very early on, and every slice
+after that kept the build green.
+
+Some notes on how the tests are written:
+
+- I used hand-written fakes, such as an in-memory repository, instead of a mocking library. Tests against
+  fakes describe behaviour, and they don't break every time the internals change.
+- The fakes are kept honest by the contract tests mentioned above. The same tests run against each fake and
+  against the real implementation.
+- Time comes in as a `Clock`, so tests can fix it. That lets me check that a link is valid one millisecond
+  before expiry and invalid at the moment it expires.
+- The fast tests don't need Docker, so they're quick to run while working. The slower PostgreSQL tests run in
+  `./mvnw verify` and in CI.
+- When I found bugs later on, I wrote a failing test for each one before fixing it.
 
 ## Configuration
 
-Profiles: `h2` (file DB and storage under `APP_DATA_DIR`), `postgres`, `dev` (RSA token issuer, Swagger, dev
-KEK fallback with a WARN banner), `demo` (seeded statements), `prod` (issuer URI, https, no dev fallback,
-Swagger off, structured ECS logs, guard), `test`.
+The main settings. All of them have defaults that work locally.
 
-| Variable | Default | Purpose |
+| Variable | Default | What it's for |
 |---|---|---|
-| `SPRING_PROFILES_ACTIVE` | `h2,dev,demo` in the image | profile set |
-| `APP_DATA_DIR` | `/data` in the image | H2 file and ciphertext root |
-| `APP_PUBLIC_BASE_URL` | `http://localhost:8080` | base of issued links; must be https in prod |
-| `APP_CRYPTO_KEK` | blank (dev fallback) | base64 of 32 random bytes; required in prod |
-| `APP_CRYPTO_KEK_ID` | `local-kek-v1` | identifier stored with each statement, for rotation |
-| `APP_JWT_ISSUER_URI` | none | prod JWT issuer (required by the guard) |
-| `APP_JWT_AUDIENCE` | `secure-statements` | audience every token must carry |
-| `SERVER_TOMCAT_REMOTEIP_INTERNAL_PROXIES` | Tomcat default (private ranges) | prod only: proxies whose `X-Forwarded-*` headers are trusted |
-| `SPRING_DATASOURCE_URL`, `_USERNAME`, `_PASSWORD` | compose values | PostgreSQL connection |
-| `APP_LINK_TTL`, `APP_LINK_MAX_DOWNLOADS` | `PT24H`, `1` | link policy (bounded 1 min to 30 d, 1 to 10) |
-| `APP_DOWNLOAD_MAX_CONCURRENT` | `16` | bulkhead permits |
+| `SPRING_PROFILES_ACTIVE` | `h2,dev,demo` in the image | Which mode to run in. |
+| `APP_DATA_DIR` | `/data` in the image | Where the H2 database and the encrypted files go. |
+| `APP_PUBLIC_BASE_URL` | `http://localhost:8080` | The address used in download links. Must be https in production. |
+| `APP_CRYPTO_KEK` | not set (dev key) | The master key, as base64 of 32 random bytes. Required in production. |
+| `APP_CRYPTO_KEK_ID` | `local-kek-v1` | A name for the master key, stored with each statement to support rotation. |
+| `APP_JWT_ISSUER_URI` | not set | The identity provider. Production only, and required there. |
+| `APP_JWT_AUDIENCE` | not set | The audience every login token must carry. Production only, and required there. |
+| `SERVER_TOMCAT_REMOTEIP_INTERNAL_PROXIES` | not set | Production only, and required there: a pattern matching the load balancer's addresses. Forwarded headers from anyone else are ignored. |
+| `APP_LINK_TTL` | `PT24H` | How long a link lasts, between 1 minute and 30 days. |
+| `APP_LINK_MAX_DOWNLOADS` | `1` | How many times a link can be used, between 1 and 10. |
+| `APP_DOWNLOAD_MAX_CONCURRENT` | `16` | How many downloads can be in progress at once. |
 
-Production sketch: `SPRING_PROFILES_ACTIVE=postgres,prod`, the KEK from a secrets manager, TLS at the ingress
-forwarding `X-Forwarded-For` / `X-Forwarded-Proto`, `APP_PUBLIC_BASE_URL=https://...`, `APP_JWT_ISSUER_URI` and
-`APP_JWT_AUDIENCE` matching the identity provider. `ProdGuard` refuses anything less, naming every missing item.
+The modes are `h2` or `postgres` for the database, `dev` for the token endpoint and Swagger, `demo` for the
+sample data, and `prod`. A production run would look like `SPRING_PROFILES_ACTIVE=postgres,prod`, with the
+master key coming from a secrets manager, TLS handled by a load balancer in front, and the identity provider
+settings filled in.
 
-## Extension points designed for, not built
+## What I'd do next
 
-- `S3StatementStorage` behind `StatementStorage` (the byte[] contract maps to put/get).
-- `KmsKeyProvider` behind `KeyProvider` (wrap/unwrap with an encryption context).
-- `SmtpNotificationAdapter` behind `NotificationPort` (receives the real URL).
-- KEK rotation job re-wrapping `wrapped_dek` rows; the content AAD excludes the KEK id for exactly this reason.
-- Chunked AEAD as `cipher_format = 2` for statements beyond tens of megabytes.
-- Edge rate limiting; in-process limiting was rejected because 256-bit tokens make enumeration infeasible.
-- Digest-pinned base images and an image vulnerability scan in CI.
+Things I left out to keep to the brief:
 
-## Decisions
+- An S3 storage adapter and a cloud key-management adapter. The interfaces are already there.
+- Sending the link by email or SMS instead of logging it.
+- Proper master key rotation. The data model supports it, but the key provider only holds one key, so
+  changing `APP_CRYPTO_KEK_ID` or the key today would make existing statements unreadable. It needs a list of
+  retired keys plus a job that re-encrypts the per-statement keys.
+- Chunked encryption for very large statements.
+- Rate limiting at the load balancer. I didn't add it inside the service, because 256-bit tokens can't
+  realistically be guessed anyway.
+- Pinning the Docker base images to exact digests and scanning them for vulnerabilities in CI. The GitHub
+  actions are already pinned, and Dependabot is set up to keep everything current.
 
-`docs/adr/` records the eight decisions behind the design: hexagonal single module, JDBC not JPA, token as
-credential with uniform 404, bounded-buffer decrypt-then-consume with append-only audit, envelope encryption
-and the KMS path, the two security chains, public base URL and the notification port, and the testing approach.
+## A note on versions
 
-Deliberately out of scope: Kafka, Kubernetes manifests, a UI, MinIO, in-process rate limiting, PDF parsing of
-uploads, JPA.
-
-## Toolchain note
-
-Spring Boot 4.1.x was chosen over the 3.5 line because 3.5's open-source support ended in June 2026. Boot 4
-moves test-slice annotations into technology modules (`org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest`,
-`org.springframework.boot.jdbc.test.autoconfigure.JdbcTest`), renames Testcontainers 2 artifacts
-(`testcontainers-postgresql`) and defaults to Jackson 3; the code here uses those directly.
+I went with Spring Boot 4.1 because open-source support for the 3.5 line ended in June 2026. Spring Boot 4
+moved some test annotations into new packages, renamed the Testcontainers artifacts, and switched to
+Jackson 3, so some imports look different from older Spring Boot projects.

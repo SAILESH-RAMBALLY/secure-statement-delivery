@@ -78,6 +78,16 @@ class ProdGuardTest {
     }
 
     @Test
+    void fails_when_forwarded_headers_are_on_but_no_proxy_is_trusted() {
+        MockEnvironment env = validProd();
+        env.setProperty("server.forward-headers-strategy", "native");
+        assertThat(ProdGuard.check(env)).anySatisfy(p -> assertThat(p).contains("SERVER_TOMCAT_REMOTEIP_INTERNAL_PROXIES"));
+
+        env.setProperty("server.tomcat.remoteip.internal-proxies", "10\\.0\\.0\\.5");
+        assertThat(ProdGuard.check(env)).isEmpty();
+    }
+
+    @Test
     void fails_when_no_audience_is_configured() {
         MockEnvironment env = validProd();
         env.setProperty("spring.security.oauth2.resourceserver.jwt.audiences", "");
@@ -160,6 +170,8 @@ class ProdGuardTest {
                         "APP_JWT_ISSUER_URI=https://idp.example.com")
                 .run())
                 .hasMessageContaining("Refusing to start")
-                .hasMessageContaining("APP_CRYPTO_KEK is not set");
+                .hasMessageContaining("APP_CRYPTO_KEK is not set")
+                .hasMessageContaining("no JWT audience")
+                .hasMessageContaining("SERVER_TOMCAT_REMOTEIP_INTERNAL_PROXIES");
     }
 }

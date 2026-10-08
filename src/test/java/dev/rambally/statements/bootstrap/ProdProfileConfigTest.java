@@ -34,7 +34,7 @@ class ProdProfileConfigTest {
     @Test
     void jwt_decoding_comes_from_a_real_issuer_and_logs_are_structured() {
         assertThat(prod.getProperty("spring.security.oauth2.resourceserver.jwt.issuer-uri")).isEqualTo("${APP_JWT_ISSUER_URI:}");
-        assertThat(prod.getProperty("spring.security.oauth2.resourceserver.jwt.audiences")).isEqualTo("${APP_JWT_AUDIENCE:secure-statements}");
+        assertThat(prod.getProperty("spring.security.oauth2.resourceserver.jwt.audiences")).isEqualTo("${APP_JWT_AUDIENCE:}");
         assertThat(prod.getProperty("server.forward-headers-strategy")).isEqualTo("native");
         assertThat(prod.getProperty("logging.structured.format.console")).isEqualTo("ecs");
         assertThat(prod.getProperty("management.endpoints.web.exposure.include")).isEqualTo("health,prometheus");

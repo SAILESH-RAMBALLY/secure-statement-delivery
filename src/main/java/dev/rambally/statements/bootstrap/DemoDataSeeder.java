@@ -17,6 +17,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.context.annotation.Profile;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.stereotype.Component;
 
 /**
@@ -37,13 +39,16 @@ public class DemoDataSeeder implements ApplicationRunner {
     private final AppProperties properties;
     private final Clock clock;
 
-    public DemoDataSeeder(StatementRepository statements, UploadStatementUseCase upload, StatementPdfGenerator generator,
-            AppProperties properties, Clock clock) {
+    private final boolean devTokensAvailable;
+
+    public DemoDataSeeder(StatementRepository statements, UploadStatementUseCase upload, AppProperties properties,
+            Clock clock, Environment environment) {
         this.statements = statements;
         this.upload = upload;
-        this.generator = generator;
+        this.generator = new StatementPdfGenerator();
         this.properties = properties;
         this.clock = clock;
+        this.devTokensAvailable = environment.acceptsProfiles(Profiles.of("dev"));
     }
 
     @Override
@@ -64,15 +69,10 @@ public class DemoDataSeeder implements ApplicationRunner {
                 seeded++;
             }
         }
-        log.info("""
-
-                ============================================================================
-                  Demo data seeded: {} statement(s).
-                  Swagger UI : {}/swagger-ui.html
-                  Mint tokens: POST /dev/token  {"subject":"ops-admin","roles":["ADMIN"]}
-                                              {"subject":"C-1001","roles":["CUSTOMER"]}
-                                              {"subject":"C-2002","roles":["CUSTOMER"]}
-                ============================================================================
-                """, seeded, properties.publicBaseUrl());
+        log.info("Demo data seeded: {} statement(s). Swagger UI: {}/swagger-ui.html", seeded, properties.publicBaseUrl());
+        if (devTokensAvailable) {
+            log.info("Get a token at POST /dev/token, e.g. {\"subject\":\"C-1001\",\"roles\":[\"CUSTOMER\"]}"
+                    + " or {\"subject\":\"ops-admin\",\"roles\":[\"ADMIN\"]}");
+        }
     }
 }

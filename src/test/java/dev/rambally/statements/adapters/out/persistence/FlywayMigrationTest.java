@@ -27,6 +27,14 @@ class FlywayMigrationTest {
         List<String> versions = jdbc.sql("SELECT version FROM flyway_schema_history WHERE success = TRUE AND version IS NOT NULL ORDER BY installed_rank")
                 .query(String.class).list();
 
-        assertThat(versions).containsExactly("1", "2", "3", "4");
+        assertThat(versions).containsExactly("1", "2", "3", "4", "5");
+    }
+
+    @Test
+    void v5_adds_the_actor_column_to_the_audit_table() {
+        List<String> columns = jdbc.sql("SELECT LOWER(column_name) FROM information_schema.columns WHERE LOWER(table_name) = 'download_audit'")
+                .query(String.class).list();
+
+        assertThat(columns).contains("actor_id");
     }
 }

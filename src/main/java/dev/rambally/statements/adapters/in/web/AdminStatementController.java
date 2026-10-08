@@ -2,7 +2,6 @@ package dev.rambally.statements.adapters.in.web;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.net.URI;
 
 import dev.rambally.statements.adapters.in.web.dto.UploadResponse;
 import dev.rambally.statements.application.Principal;
@@ -17,6 +16,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -40,7 +40,7 @@ public class AdminStatementController {
     @Operation(summary = "Upload a customer's statement PDF",
             description = "Encrypts the PDF at rest and records it for the customer. Requires the ADMIN role. "
                     + "The uploaded file name is discarded; downloads use a server-derived name.")
-    @ApiResponse(responseCode = "201", description = "Statement stored; Location points at the statement")
+    @ApiResponse(responseCode = "201", description = "Statement stored; the body carries its id")
     @ApiResponse(responseCode = "400", description = "Bad account number or period")
     @ApiResponse(responseCode = "403", description = "Caller lacks the ADMIN role")
     @ApiResponse(responseCode = "409", description = "A statement for this customer, account and period exists")
@@ -60,7 +60,7 @@ public class AdminStatementController {
                 bytesOf(file),
                 actor);
         StatementId id = upload.upload(command);
-        return ResponseEntity.created(URI.create("/api/statements/" + id)).body(new UploadResponse(id.toString()));
+        return ResponseEntity.status(HttpStatus.CREATED).body(new UploadResponse(id.toString()));
     }
 
     private static byte[] bytesOf(MultipartFile file) {

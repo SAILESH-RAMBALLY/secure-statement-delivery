@@ -11,7 +11,12 @@ public final class LinkNotRedeemableException extends DomainException {
     private final RedemptionOutcome outcome;
 
     public LinkNotRedeemableException(RedemptionOutcome outcome) {
-        super("link not redeemable: " + outcome);
+        this(outcome, null);
+    }
+
+    /** For INTERNAL_ERROR: keeps the infrastructure fault so the web adapter can log it. */
+    public LinkNotRedeemableException(RedemptionOutcome outcome, Throwable cause) {
+        super("link not redeemable: " + outcome, cause);
         this.outcome = outcome;
     }
 

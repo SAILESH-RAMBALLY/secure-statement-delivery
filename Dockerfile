@@ -17,6 +17,8 @@ RUN ./mvnw -B -q -DskipTests package \
 
 # ---------- runtime stage ----------
 FROM eclipse-temurin:21-jre-alpine
+LABEL org.opencontainers.image.title="secure-statement-delivery" \
+      org.opencontainers.image.version="1.0.4"
 RUN addgroup -S app && adduser -S -u 10001 -G app app \
  && mkdir -p /data/statements /data/db && chown -R app:app /data
 WORKDIR /app

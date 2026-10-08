@@ -67,7 +67,8 @@ public final class RedeemDownloadLinkService implements RedeemDownloadLinkUseCas
         } catch (LinkNotRedeemableException expected) {
             throw expected;
         } catch (RuntimeException infrastructure) {
-            throw fail(now, RedemptionOutcome.INTERNAL_ERROR, prefix, link, ctx);
+            audit(now, RedemptionOutcome.INTERNAL_ERROR, prefix, link, ctx);
+            throw new LinkNotRedeemableException(RedemptionOutcome.INTERNAL_ERROR, infrastructure);
         }
     }
 
@@ -97,16 +98,34 @@ public final class RedeemDownloadLinkService implements RedeemDownloadLinkUseCas
         }
 
         if (!links.tryConsume(link.id(), now)) {
-            throw fail(now, RedemptionOutcome.LOST_RACE, prefix, link, ctx);
+            throw fail(now, outcomeOfFailedConsume(link, now), prefix, link, ctx);
         }
         SideEffects.quietly(() -> audit.record(
                 AuditEvent.redemption(now, RedemptionOutcome.SUCCESS, prefix, link, ctx.clientIp(), ctx.userAgent())));
         return new StatementDownload(statement.downloadFileName(), plaintext);
     }
 
+    /**
+     * The pre-check passed but the conditional UPDATE changed nothing. Re-read the link so a revocation or expiry
+     * that landed during decryption is recorded as what it was; only a link used up by someone else is LOST_RACE.
+     */
+    private RedemptionOutcome outcomeOfFailedConsume(DownloadLink before, Instant now) {
+        return links.findById(before.id())
+                .map(current -> switch (current.redeemability(now)) {
+                    case REVOKED -> RedemptionOutcome.REVOKED;
+                    case EXPIRED -> RedemptionOutcome.EXPIRED;
+                    case EXHAUSTED, OK -> RedemptionOutcome.LOST_RACE;
+                })
+                .orElse(RedemptionOutcome.LOST_RACE);
+    }
+
     private LinkNotRedeemableException fail(Instant now, RedemptionOutcome outcome, String prefix, DownloadLink link,
             RequestContext ctx) {
-        SideEffects.quietly(() -> audit.record(AuditEvent.redemption(now, outcome, prefix, link, ctx.clientIp(), ctx.userAgent())));
+        audit(now, outcome, prefix, link, ctx);
         return new LinkNotRedeemableException(outcome);
+    }
+
+    private void audit(Instant now, RedemptionOutcome outcome, String prefix, DownloadLink link, RequestContext ctx) {
+        SideEffects.quietly(() -> audit.record(AuditEvent.redemption(now, outcome, prefix, link, ctx.clientIp(), ctx.userAgent())));
     }
 }

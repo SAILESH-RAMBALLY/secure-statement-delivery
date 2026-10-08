@@ -25,6 +25,7 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.ServletWebRequest;
 import org.springframework.web.context.request.WebRequest;
+import org.springframework.web.multipart.MultipartException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
 /**
@@ -59,9 +60,20 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     /**
-     * Anything not mapped above is a server-side defect: logged with its class and message (which never
-     * contain client input by construction of the domain exceptions) and answered with a fixed 500 body, so no
-     * request ever reaches Boot's default error page.
+     * A body that claims to be multipart but can't be parsed is the client's mistake, not ours. On the public
+     * download path it gets the same constant 404 as everything else there.
+     */
+    @ExceptionHandler(MultipartException.class)
+    ResponseEntity<?> handleBadMultipart(MultipartException ex, HttpServletRequest request) {
+        if (DOWNLOAD_INSTANCE.equals(instanceFor(request.getRequestURI()))) {
+            return DownloadProblem.notFound();
+        }
+        return ResponseEntity.badRequest().body(problem(HttpStatus.BAD_REQUEST, "Invalid request", request));
+    }
+
+    /**
+     * Anything not mapped above is a server-side defect. The full exception is logged at ERROR for operators;
+     * the client gets a fixed 500 body that contains nothing from the exception or the request.
      */
     @ExceptionHandler(Exception.class)
     ProblemDetail handleUnexpected(Exception ex, HttpServletRequest request) {

@@ -35,6 +35,7 @@ import org.springframework.test.web.servlet.MvcResult;
 
 @WebSliceTest(controllers = DownloadController.class)
 @Import(DownloadControllerTest.Stubs.class)
+@org.junit.jupiter.api.extension.ExtendWith(org.springframework.boot.test.system.OutputCaptureExtension.class)
 class DownloadControllerTest {
 
     static final String TOKEN = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOP-";
@@ -195,5 +196,26 @@ class DownloadControllerTest {
         redeem.failWith = null;
 
         mvc.perform(get("/download/" + TOKEN)).andExpect(status().isOk());
+    }
+
+    @Test
+    void an_infrastructure_fault_is_logged_with_its_cause_but_never_the_token(
+            org.springframework.boot.test.system.CapturedOutput output) throws Exception {
+        redeem.failWith = new LinkNotRedeemableException(RedemptionOutcome.INTERNAL_ERROR,
+                new java.io.UncheckedIOException(new java.io.IOException("permission denied")));
+
+        mvc.perform(get("/download/" + TOKEN)).andExpect(status().isNotFound())
+                .andExpect(content().string(DownloadProblem.NOT_FOUND_BODY));
+
+        assertThat(output.getOut()).contains("download failed with UncheckedIOException").doesNotContain(TOKEN);
+    }
+
+    @Test
+    void an_ordinary_refusal_is_not_logged(org.springframework.boot.test.system.CapturedOutput output) throws Exception {
+        redeem.failWith = new LinkNotRedeemableException(RedemptionOutcome.EXPIRED);
+
+        mvc.perform(get("/download/" + TOKEN)).andExpect(status().isNotFound());
+
+        assertThat(output.getOut()).doesNotContain("download failed");
     }
 }

@@ -3,8 +3,8 @@ package dev.rambally.statements.application;
 import dev.rambally.statements.domain.CustomerId;
 
 /**
- * Who is calling. Constructed only by the web adapter from the verified JWT (subject and roles);
- * no use case ever accepts a caller identity from a URL or request body.
+ * Who is calling. Built by the web adapter from the verified JWT (subject and roles), and once, as a fixed
+ * system actor, by the demo-profile seeder. No use case accepts a caller identity from a URL or request body.
  */
 public record Principal(CustomerId customerId, boolean admin) {
 

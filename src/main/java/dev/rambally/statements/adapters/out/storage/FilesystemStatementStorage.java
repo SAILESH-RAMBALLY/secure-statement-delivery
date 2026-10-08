@@ -2,6 +2,7 @@ package dev.rambally.statements.adapters.out.storage;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.Files;
@@ -32,10 +33,14 @@ public final class FilesystemStatementStorage implements StatementStorage {
             Path tmp = Files.createTempFile(target.getParent(), "." + target.getFileName() + ".", ".tmp");
             try {
                 try (FileChannel channel = FileChannel.open(tmp, StandardOpenOption.WRITE)) {
-                    channel.write(java.nio.ByteBuffer.wrap(ciphertext));
+                    ByteBuffer buffer = ByteBuffer.wrap(ciphertext);
+                    while (buffer.hasRemaining()) {
+                        channel.write(buffer); // a single write may be partial
+                    }
                     channel.force(true); // data on disk before the rename becomes visible
                 }
                 Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+                syncDirectory(target.getParent()); // make the rename itself durable
             } finally {
                 Files.deleteIfExists(tmp);
             }
@@ -63,6 +68,15 @@ public final class FilesystemStatementStorage implements StatementStorage {
             Files.deleteIfExists(resolve(key.value()));
         } catch (IOException e) {
             throw new UncheckedIOException("could not delete statement ciphertext", e);
+        }
+    }
+
+    /** On Linux a rename is only durable once its directory is synced. Some platforms can't open a directory. */
+    private static void syncDirectory(Path dir) {
+        try (FileChannel channel = FileChannel.open(dir, StandardOpenOption.READ)) {
+            channel.force(true);
+        } catch (IOException | UnsupportedOperationException notSupported) {
+            // Windows and some filesystems don't allow this; the file data itself is already forced.
         }
     }
 

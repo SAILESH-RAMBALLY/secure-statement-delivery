@@ -20,6 +20,12 @@ public final class InMemoryDownloadLinkRepository implements DownloadLinkReposit
     private final Map<LinkId, DownloadLink> byId = new ConcurrentHashMap<>();
     private volatile boolean failNextConsume;
     private volatile RuntimeException failNextFindWith;
+    private volatile Runnable beforeNextConsume;
+
+    /** Test hook: run something (for example a revocation) just before the next consume, as a race would. */
+    public void beforeNextConsume(Runnable action) {
+        this.beforeNextConsume = action;
+    }
 
     /** Test hook: the next lookup throws, as a database outage would. */
     public void failNextFindWith(RuntimeException e) {
@@ -68,6 +74,11 @@ public final class InMemoryDownloadLinkRepository implements DownloadLinkReposit
     /** Same predicate as the domain pre-check, applied atomically; mirrors the SQL conditional UPDATE. */
     @Override
     public synchronized boolean tryConsume(LinkId id, Instant now) {
+        if (beforeNextConsume != null) {
+            Runnable action = beforeNextConsume;
+            beforeNextConsume = null;
+            action.run();
+        }
         if (failNextConsume) {
             failNextConsume = false;
             return false;

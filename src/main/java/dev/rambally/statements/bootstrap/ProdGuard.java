@@ -71,6 +71,13 @@ public final class ProdGuard implements EnvironmentPostProcessor, Ordered {
             problems.add("no JWT decoder source: set APP_JWT_ISSUER_URI (issuer-uri), or jwk-set-uri / public-key-location");
         }
 
+        if ("native".equalsIgnoreCase(env.getProperty("server.forward-headers-strategy", ""))
+                && env.getProperty("server.tomcat.remoteip.internal-proxies", "").isBlank()
+                && env.getProperty("server.tomcat.remoteip.trusted-proxies", "").isBlank()) {
+            problems.add("forwarded headers are on but no proxy is trusted: set SERVER_TOMCAT_REMOTEIP_INTERNAL_PROXIES"
+                    + " to the load balancer's address so other callers can't fake their IP");
+        }
+
         if (env.getProperty(JWT + "audiences", "").isBlank()) {
             problems.add("no JWT audience: set APP_JWT_AUDIENCE so tokens minted for other services are rejected");
         }

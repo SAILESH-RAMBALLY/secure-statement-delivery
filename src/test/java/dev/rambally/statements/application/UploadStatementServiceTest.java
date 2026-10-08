@@ -139,4 +139,24 @@ class UploadStatementServiceTest {
 
         assertThat(storage.size()).isZero();
     }
+
+    @Test
+    void a_failure_reported_after_the_row_was_committed_keeps_the_file_and_returns_the_id() {
+        repository.failAfterNextSaveWith(new IllegalStateException("connection reset after commit"));
+
+        StatementId id = service.upload(command(TestPdfs.minimal(), ADMIN));
+
+        Statement saved = repository.findById(id).orElseThrow();
+        assertThat(storage.contains(saved.storageKey())).isTrue();
+    }
+
+    @Test
+    void a_failing_cleanup_does_not_hide_the_original_failure() {
+        service.upload(command(TestPdfs.minimal(), ADMIN));
+        storage.failNextDeleteWith(new IllegalStateException("disk gone"));
+
+        assertThatThrownBy(() -> service.upload(command(TestPdfs.minimal(), ADMIN)))
+                .isInstanceOf(DuplicateStatementException.class)
+                .satisfies(e -> assertThat(e.getSuppressed()).hasSize(1));
+    }
 }

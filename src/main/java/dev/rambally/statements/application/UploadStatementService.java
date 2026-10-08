@@ -14,6 +14,7 @@ import dev.rambally.statements.domain.Sha256;
 import dev.rambally.statements.domain.Statement;
 import dev.rambally.statements.domain.StatementId;
 import dev.rambally.statements.domain.StorageKey;
+import dev.rambally.statements.domain.exception.DomainException;
 import dev.rambally.statements.domain.exception.ForbiddenException;
 import dev.rambally.statements.domain.exception.InvalidStatementException;
 
@@ -61,14 +62,35 @@ public final class UploadStatementService implements UploadStatementUseCase {
                 pdf.size(), Sha256.of(pdf.bytes()), key, sealed.envelope(), now);
         try {
             statements.save(statement);
-        } catch (RuntimeException e) {
-            try {
-                storage.delete(key);
-            } catch (RuntimeException cleanupFailure) {
-                e.addSuppressed(cleanupFailure); // the original failure is what the caller must see
+        } catch (DomainException definite) {
+            // The row was definitely not written (for example a duplicate), so the file must go.
+            deleteQuietly(key, definite);
+            throw definite;
+        } catch (RuntimeException ambiguous) {
+            // A dropped connection can fail after the database committed. Only delete the file if the row is
+            // really absent; if we can't tell, keep the file, because an orphan is safer than a broken row.
+            if (rowCommitted(id)) {
+                return id;
             }
-            throw e;
+            deleteQuietly(key, ambiguous);
+            throw ambiguous;
         }
         return id;
+    }
+
+    private boolean rowCommitted(StatementId id) {
+        try {
+            return statements.findById(id).isPresent();
+        } catch (RuntimeException cannotTell) {
+            return true;
+        }
+    }
+
+    private void deleteQuietly(StorageKey key, RuntimeException original) {
+        try {
+            storage.delete(key);
+        } catch (RuntimeException cleanupFailure) {
+            original.addSuppressed(cleanupFailure); // the original failure is what the caller must see
+        }
     }
 }

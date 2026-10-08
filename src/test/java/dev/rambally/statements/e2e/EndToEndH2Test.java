@@ -106,12 +106,13 @@ class EndToEndH2Test {
     @Test
     void unknown_and_malformed_tokens_get_the_same_constant_404_and_are_audited() {
         EndToEndFlow flow = new EndToEndFlow(port);
+        long before = jdbc.sql("SELECT COALESCE(MAX(id), 0) FROM download_audit").query(Long.class).single();
 
         EndToEndFlow.assertConstantNotFound(flow.download("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOP-"));
         EndToEndFlow.assertConstantNotFound(flow.download("nope"));
 
-        List<String> outcomes = jdbc.sql("SELECT outcome FROM download_audit WHERE event_type = 'REDEMPTION' AND link_id IS NULL ORDER BY id")
-                .query(String.class).list();
-        assertThat(outcomes).contains("UNKNOWN_TOKEN", "MALFORMED_TOKEN");
+        List<String> outcomes = jdbc.sql("SELECT outcome FROM download_audit WHERE id > :before ORDER BY id")
+                .param("before", before).query(String.class).list();
+        assertThat(outcomes).containsExactly("UNKNOWN_TOKEN", "MALFORMED_TOKEN");
     }
 }

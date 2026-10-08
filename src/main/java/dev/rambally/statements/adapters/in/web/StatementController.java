@@ -1,6 +1,5 @@
 package dev.rambally.statements.adapters.in.web;
 
-import java.net.URI;
 import java.util.List;
 
 import dev.rambally.statements.adapters.in.web.dto.IssueLinkResponse;
@@ -19,6 +18,7 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -63,8 +63,7 @@ public class StatementController {
     @PostMapping("/{statementId}/links")
     public ResponseEntity<IssueLinkResponse> issueLink(@PathVariable("statementId") String statementId, Principal actor) {
         IssuedLink issued = issue.issue(new IssueLinkCommand(RequestInputs.parse(() -> StatementId.of(statementId)), actor));
-        return ResponseEntity.created(URI.create("/api/links/" + issued.linkId()))
-                .body(IssueLinkResponse.of(issued));
+        return ResponseEntity.status(HttpStatus.CREATED).body(IssueLinkResponse.of(issued));
     }
 
     @Operation(summary = "List the links issued for one of my statements",

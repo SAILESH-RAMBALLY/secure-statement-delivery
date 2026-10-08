@@ -87,12 +87,12 @@ class AdminStatementControllerTest {
     }
 
     @Test
-    void admin_jwt_uploads_pdf_and_gets_201_with_location() throws Exception {
+    void admin_jwt_uploads_pdf_and_gets_201_with_the_id() throws Exception {
         useCase.failWith = null;
 
         mvc.perform(upload(TestPdfs.minimal()).with(admin()))
                 .andExpect(status().isCreated())
-                .andExpect(header().string("Location", "/api/statements/" + CREATED))
+                .andExpect(header().doesNotExist("Location"))
                 .andExpect(jsonPath("$.statementId").value(CREATED.toString()));
 
         assertThat(useCase.lastCommand.customerId()).isEqualTo(new CustomerId("C-1001"));

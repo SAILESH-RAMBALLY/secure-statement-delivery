@@ -82,7 +82,7 @@ class AdminUploadHttpTest {
         ResponseEntity<String> response = upload(admin, TestPdfs.minimal(), "5550001111", "2026-08");
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-        assertThat(response.getHeaders().getFirst(HttpHeaders.LOCATION)).startsWith("/api/statements/");
+        assertThat(response.getBody()).contains("\"statementId\"");
         assertThat(statements.findByCustomer(new CustomerId("C-1001")))
                 .anySatisfy(s -> assertThat(s.accountNumber().value()).isEqualTo("5550001111"));
     }

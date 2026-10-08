@@ -31,6 +31,9 @@ class ActuatorExposureTest {
     @Autowired
     AppProperties properties;
 
+    @Autowired
+    org.springframework.boot.health.actuate.endpoint.HealthEndpointGroups healthGroups;
+
     private ResponseEntity<String> get(String path, String token) {
         RestClient.RequestHeadersSpec<?> spec = RestClient.builder().baseUrl("http://localhost:" + port)
                 .defaultStatusHandler(status -> true, (request, response) -> { }).build()
@@ -48,6 +51,8 @@ class ActuatorExposureTest {
         ResponseEntity<String> readiness = get("/actuator/health/readiness", null);
         assertThat(readiness.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(readiness.getBody()).contains("\"status\":\"UP\"");
+        assertThat(healthGroups.get("readiness").isMember("db")).isTrue();
+        assertThat(healthGroups.get("liveness").isMember("db")).isFalse();
     }
 
     @Test

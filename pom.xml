@@ -13,7 +13,7 @@
 
   <groupId>dev.rambally</groupId>
   <artifactId>secure-statement-delivery</artifactId>
-  <version>0.1.0-SNAPSHOT</version>
+  <version>1.0.4</version>
   <name>secure-statement-delivery</name>
   <description>Stores customer account statements as encrypted PDFs and issues secure, time-limited download links.</description>
 

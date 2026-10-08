@@ -8,8 +8,7 @@ CREATE TABLE download_audit (
     token_hash_prefix VARCHAR(16)  NULL,
     link_id           UUID         NULL,
     statement_id      UUID         NULL,
-    customer_id       VARCHAR(128) NULL,          -- whose statement/link
-    actor_id          VARCHAR(128) NULL,          -- who acted (LINK_ISSUED / LINK_REVOKED); may differ from customer_id
+    customer_id       VARCHAR(128) NULL,
     client_ip         VARCHAR(45)  NULL,
     user_agent        VARCHAR(255) NULL,
     CONSTRAINT pk_download_audit PRIMARY KEY (id)

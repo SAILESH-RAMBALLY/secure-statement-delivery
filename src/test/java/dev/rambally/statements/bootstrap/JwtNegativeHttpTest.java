@@ -126,4 +126,15 @@ class JwtNegativeHttpTest {
     void a_malformed_bearer_value_is_rejected_with_the_same_401_body() {
         assertUnauthorized("not.a.jwt", "garbage");
     }
+
+    @Test
+    void a_trusted_token_whose_subject_is_not_a_usable_customer_id_is_rejected_with_401() {
+        ResponseEntity<String> blank = call("/api/statements", mint(trustedEncoder, c -> c.subject("   ")));
+        ResponseEntity<String> tooLong = call("/api/statements", mint(trustedEncoder, c -> c.subject("x".repeat(200))));
+
+        for (ResponseEntity<String> response : List.of(blank, tooLong)) {
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+            assertThat(response.getHeaders().getFirst(HttpHeaders.WWW_AUTHENTICATE)).startsWith("Bearer");
+        }
+    }
 }

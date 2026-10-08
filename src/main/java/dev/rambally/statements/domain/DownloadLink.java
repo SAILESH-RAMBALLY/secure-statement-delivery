@@ -70,8 +70,4 @@ public record DownloadLink(
     public DownloadLink withDownloadCount(int count) {
         return new DownloadLink(id, statementId, customerId, tokenHash, issuedAt, expiresAt, maxDownloads, count, revokedAt);
     }
-
-    public boolean isOwnedBy(CustomerId candidate) {
-        return customerId.equals(candidate);
-    }
 }

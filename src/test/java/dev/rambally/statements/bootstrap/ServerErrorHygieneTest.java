@@ -56,4 +56,20 @@ class ServerErrorHygieneTest {
         }
         assertThat(downloadExtra.getBody()).contains("\"instance\":\"/download\"");
     }
+
+    @Test
+    void an_unparseable_multipart_body_is_a_client_error_never_a_500() {
+        String admin = TestTokens.mint(jwtEncoder, properties, "ops-admin", List.of("ADMIN"));
+        RestClient client = client();
+
+        ResponseEntity<String> download = client.post().uri("/download/abc")
+                .header(HttpHeaders.CONTENT_TYPE, "multipart/form-data").body("garbage").retrieve().toEntity(String.class);
+        ResponseEntity<String> upload = client.post().uri("/api/admin/statements")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer " + admin)
+                .header(HttpHeaders.CONTENT_TYPE, "multipart/form-data").body("garbage").retrieve().toEntity(String.class);
+
+        assertThat(download.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(download.getBody()).isEqualTo(dev.rambally.statements.adapters.in.web.DownloadProblem.NOT_FOUND_BODY);
+        assertThat(upload.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
 }

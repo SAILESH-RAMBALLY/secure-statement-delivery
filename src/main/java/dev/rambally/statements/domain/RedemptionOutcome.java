@@ -14,11 +14,11 @@ public enum RedemptionOutcome {
     REVOKED,
     /** The count was already at the maximum when the link was read. */
     EXHAUSTED,
-    /** The pre-check passed but the conditional UPDATE changed no row: a concurrent redeemer won. */
+    /** The pre-check passed but a concurrent request used up the link first. */
     LOST_RACE,
     /** GCM tag verification failed: tampered or corrupted ciphertext, or wrong key. */
     INTEGRITY_FAILED,
-    /** The ciphertext file is missing or has the wrong size. */
+    /** The ciphertext file is missing or has the wrong size, or the statement's row is missing. */
     STORAGE_MISSING,
     /** An infrastructure fault (database, filesystem, key provider) interrupted the attempt. */
     INTERNAL_ERROR

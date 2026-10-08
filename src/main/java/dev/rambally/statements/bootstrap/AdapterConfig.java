@@ -61,8 +61,4 @@ public class AdapterConfig {
         return new LoggingNotificationAdapter();
     }
 
-    @Bean
-    StatementPdfGenerator statementPdfGenerator() {
-        return new StatementPdfGenerator();
-    }
 }

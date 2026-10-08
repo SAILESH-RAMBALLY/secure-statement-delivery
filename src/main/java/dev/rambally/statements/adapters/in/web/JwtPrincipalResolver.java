@@ -14,7 +14,7 @@ import org.springframework.web.method.support.ModelAndViewContainer;
 
 /**
  * Turns the verified JWT into the application's {@link Principal}: identity is the subject, admin-ness
- * is the ROLE_ADMIN authority. This is the only place a caller identity is ever constructed.
+ * is the ROLE_ADMIN authority. This is the only place a request's caller identity is constructed.
  */
 public class JwtPrincipalResolver implements HandlerMethodArgumentResolver {
 

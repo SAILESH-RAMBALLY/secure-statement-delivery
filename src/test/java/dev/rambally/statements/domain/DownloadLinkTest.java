@@ -71,14 +71,6 @@ class DownloadLinkTest {
     }
 
     @Test
-    void is_owned_by_uses_the_denormalised_customer_id() {
-        DownloadLink link = Fixtures.freshLink(statement);
-
-        assertThat(link.isOwnedBy(new CustomerId("C-1001"))).isTrue();
-        assertThat(link.isOwnedBy(new CustomerId("C-2002"))).isFalse();
-    }
-
-    @Test
     void rejects_inconsistent_state() {
         DownloadLink link = Fixtures.freshLink(statement);
         assertThatThrownBy(() -> link.withDownloadCount(2)).isInstanceOf(IllegalArgumentException.class);
