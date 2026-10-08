@@ -73,4 +73,20 @@ class OpenApiDocsTest {
         assertThat(paths.get("/api/statements").get("get").has("parameters")).isFalse();
         assertThat(paths.get("/api/statements/{statementId}/links").get("post").get("parameters").size()).isEqualTo(1);
     }
+
+    @Test
+    void every_get_documents_a_success_response_and_public_endpoints_need_no_token() {
+        String body = RestClient.create("http://localhost:" + port).get().uri("/v3/api-docs").retrieve().body(String.class);
+        tools.jackson.databind.JsonNode paths = tools.jackson.databind.json.JsonMapper.builder().build().readTree(body).get("paths");
+
+        paths.properties().forEach(path -> {
+            var get = path.getValue().get("get");
+            if (get != null) {
+                assertThat(get.get("responses").properties().stream().map(java.util.Map.Entry::getKey))
+                        .as("GET " + path.getKey()).anyMatch(code -> code.startsWith("2"));
+            }
+        });
+        assertThat(paths.get("/download/{token}").get("get").get("security").size()).isZero();
+        assertThat(paths.get("/dev/token")).as("dev endpoint only in the dev profile").isNull();
+    }
 }

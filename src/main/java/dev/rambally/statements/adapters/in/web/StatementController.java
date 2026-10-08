@@ -68,7 +68,9 @@ public class StatementController {
 
     @Operation(summary = "List the links issued for one of my statements",
             description = "Status, timestamps and counts only; tokens and hashes are never returned.")
-    @ApiResponse(responseCode = "404", description = "Statement unknown or not yours (indistinguishable)")
+    @ApiResponse(responseCode = "200", description = "The links, newest first")
+    @ApiResponse(responseCode = "404", description = "Statement unknown or not yours (indistinguishable)",
+            content = @io.swagger.v3.oas.annotations.media.Content)
     @GetMapping("/{statementId}/links")
     public List<LinkSummaryResponse> listLinks(@PathVariable("statementId") String statementId, Principal actor) {
         return links.linksFor(RequestInputs.parse(() -> StatementId.of(statementId)), actor).stream()

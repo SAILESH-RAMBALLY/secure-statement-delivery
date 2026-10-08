@@ -234,8 +234,6 @@
           <excludes>
             <exclude>dev/rambally/statements/SecureStatementDeliveryApplication.class</exclude>
             <exclude>dev/rambally/statements/bootstrap/**/*Config.class</exclude>
-            <exclude>dev/rambally/statements/bootstrap/DemoDataSeeder.class</exclude>
-            <exclude>dev/rambally/statements/bootstrap/StatementPdfGenerator.class</exclude>
             <exclude>dev/rambally/statements/adapters/in/web/dto/**</exclude>
           </excludes>
         </configuration>

@@ -49,6 +49,7 @@ public class DownloadController {
     @ApiResponse(responseCode = "200", description = "The PDF, as an attachment")
     @ApiResponse(responseCode = "404", description = "Statement not available (constant body)")
     @ApiResponse(responseCode = "503", description = "Too many downloads in flight; retry shortly")
+    @io.swagger.v3.oas.annotations.security.SecurityRequirements
     @GetMapping(path = "/{token}")
     public ResponseEntity<byte[]> download(@PathVariable("token") String token, HttpServletRequest request) {
         StatementDownload download = redeem.redeem(token,

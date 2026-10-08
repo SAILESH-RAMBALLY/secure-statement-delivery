@@ -110,10 +110,10 @@ class JwtNegativeHttpTest {
     }
 
     @Test
-    void a_valid_token_without_roles_is_authenticated_but_forbidden_on_role_gated_paths() {
+    void a_valid_token_without_roles_is_forbidden_everywhere() {
         String roleless = mint(trustedEncoder, c -> c.claims(claims -> claims.remove(properties.security().rolesClaim())));
 
-        assertThat(call("/api/statements", roleless).getStatusCode()).as("authenticated customer path").isEqualTo(HttpStatus.OK);
+        assertThat(call("/api/statements", roleless).getStatusCode()).as("customer path needs a role").isEqualTo(HttpStatus.FORBIDDEN);
         assertThat(call("/actuator/prometheus", roleless).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
         ResponseEntity<String> admin = RestClient.builder().baseUrl("http://localhost:" + port)
                 .defaultStatusHandler(status -> true, (request, response) -> { }).build()

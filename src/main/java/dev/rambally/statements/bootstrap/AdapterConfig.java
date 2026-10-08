@@ -7,6 +7,7 @@ import java.time.temporal.ChronoUnit;
 import dev.rambally.statements.adapters.out.crypto.LocalKekKeyProvider;
 import dev.rambally.statements.adapters.out.notification.LoggingNotificationAdapter;
 import dev.rambally.statements.adapters.out.storage.FilesystemStatementStorage;
+import dev.rambally.statements.adapters.out.storage.StorageHealthIndicator;
 import dev.rambally.statements.adapters.out.token.SecureRandomTokenGenerator;
 import dev.rambally.statements.application.port.out.KeyProvider;
 import dev.rambally.statements.application.port.out.NotificationPort;
@@ -49,6 +50,11 @@ public class AdapterConfig {
     @Bean
     StatementStorage statementStorage(AppProperties properties) {
         return new FilesystemStatementStorage(properties.storage().root());
+    }
+
+    @Bean
+    StorageHealthIndicator storageHealthIndicator(AppProperties properties) {
+        return new StorageHealthIndicator(properties.storage().root());
     }
 
     @Bean

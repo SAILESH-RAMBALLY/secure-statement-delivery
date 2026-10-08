@@ -52,6 +52,7 @@ class ActuatorExposureTest {
         assertThat(readiness.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(readiness.getBody()).contains("\"status\":\"UP\"");
         assertThat(healthGroups.get("readiness").isMember("db")).isTrue();
+        assertThat(healthGroups.get("readiness").isMember("storage")).isTrue();
         assertThat(healthGroups.get("liveness").isMember("db")).isFalse();
     }
 

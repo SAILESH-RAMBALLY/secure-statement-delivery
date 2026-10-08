@@ -54,8 +54,15 @@ public final class ProdGuard implements EnvironmentPostProcessor, Ordered {
         }
 
         String datasource = env.getProperty("spring.datasource.url", "");
-        if (datasource.toLowerCase().startsWith("jdbc:h2:")) {
-            problems.add("the datasource is H2; production needs PostgreSQL");
+        if (!datasource.toLowerCase().startsWith("jdbc:postgresql:")) {
+            if (datasource.isBlank()) {
+                problems.add("no datasource: activate the postgres profile and set SPRING_DATASOURCE_URL"
+                        + " (otherwise an in-memory database would be used)");
+            } else if (datasource.toLowerCase().startsWith("jdbc:h2:")) {
+                problems.add("the datasource is H2; production needs PostgreSQL");
+            } else {
+                problems.add("the datasource is not PostgreSQL; production needs PostgreSQL");
+            }
         }
 
         for (String profile : List.of("dev", "demo", "test")) {

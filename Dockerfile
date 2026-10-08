@@ -23,10 +23,11 @@ RUN addgroup -S app && adduser -S -u 10001 -G app app \
  && mkdir -p /data/statements /data/db && chown -R app:app /data
 WORKDIR /app
 
-COPY --from=build --chown=app:app /workspace/extracted/dependencies/ ./
-COPY --from=build --chown=app:app /workspace/extracted/spring-boot-loader/ ./
-COPY --from=build --chown=app:app /workspace/extracted/snapshot-dependencies/ ./
-COPY --from=build --chown=app:app /workspace/extracted/application/ ./
+# Application files stay owned by root, so the runtime user can't modify them; only /data is writable.
+COPY --from=build /workspace/extracted/dependencies/ ./
+COPY --from=build /workspace/extracted/spring-boot-loader/ ./
+COPY --from=build /workspace/extracted/snapshot-dependencies/ ./
+COPY --from=build /workspace/extracted/application/ ./
 
 USER 10001
 VOLUME /data

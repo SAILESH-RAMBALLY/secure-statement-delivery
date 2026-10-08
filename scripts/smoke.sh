@@ -20,7 +20,7 @@ done
 curl -fs "$BASE_URL/actuator/health"; echo
 
 # Unique identities per run so the script can be re-run against a persistent instance without a 409.
-RUN_ID="$(date -u +%s)"
+RUN_ID="$(date -u +%s)$$$RANDOM"
 CUSTOMER_ID="C-smoke-$RUN_ID"
 ACCOUNT="9${RUN_ID: -9}"
 

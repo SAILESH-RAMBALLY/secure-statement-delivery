@@ -55,6 +55,7 @@ public class DevTokenController {
 
     @Operation(summary = "Mint a development JWT",
             description = "subject becomes the customer id; roles are CUSTOMER and/or ADMIN; ttlMinutes defaults to 60 (max 120).")
+    @io.swagger.v3.oas.annotations.security.SecurityRequirements
     @PostMapping("/token")
     public TokenResponse token(@Valid @RequestBody TokenRequest request) {
         if (!ROLES.containsAll(request.roles())) {

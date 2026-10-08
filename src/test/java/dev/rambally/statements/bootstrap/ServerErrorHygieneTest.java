@@ -49,7 +49,7 @@ class ServerErrorHygieneTest {
 
         assertThat(anonymous.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
         assertThat(authenticated.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
-        assertThat(apiTypo.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(apiTypo.getStatusCode()).as("unknown API paths are closed, not open").isEqualTo(HttpStatus.FORBIDDEN);
         assertThat(downloadExtra.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
         for (ResponseEntity<String> response : List.of(anonymous, authenticated, apiTypo, downloadExtra)) {
             assertThat(response.getBody()).doesNotContain(TOKEN_LIKE).doesNotContain("Exception").doesNotContain("\tat ");
@@ -71,5 +71,22 @@ class ServerErrorHygieneTest {
         assertThat(download.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
         assertThat(download.getBody()).isEqualTo(dev.rambally.statements.adapters.in.web.DownloadProblem.NOT_FOUND_BODY);
         assertThat(upload.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
+    @Test
+    void firewall_rejected_and_trace_requests_never_echo_the_path() {
+        RestClient client = client();
+
+        ResponseEntity<String> semicolonDownload = client.get().uri("/download/" + TOKEN_LIKE + ";x").retrieve().toEntity(String.class);
+        ResponseEntity<String> semicolonApi = client.get().uri("/api/statements;jsessionid=" + TOKEN_LIKE).retrieve().toEntity(String.class);
+        ResponseEntity<String> trace = client.method(org.springframework.http.HttpMethod.TRACE).uri("/download/" + TOKEN_LIKE)
+                .retrieve().toEntity(String.class);
+
+        assertThat(semicolonDownload.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(semicolonDownload.getBody()).isEqualTo(dev.rambally.statements.adapters.in.web.DownloadProblem.NOT_FOUND_BODY);
+        assertThat(semicolonApi.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        for (ResponseEntity<String> response : List.of(semicolonDownload, semicolonApi, trace)) {
+            assertThat(response.getBody()).doesNotContain(TOKEN_LIKE).doesNotContain("\"path\"");
+        }
     }
 }

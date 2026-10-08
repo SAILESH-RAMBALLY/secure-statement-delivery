@@ -16,7 +16,9 @@ import dev.rambally.statements.domain.exception.StatementNotFoundException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.TransientDataAccessException;
 import org.springframework.http.HttpHeaders;
+import org.springframework.jdbc.CannotGetJdbcConnectionException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
@@ -69,6 +71,15 @@ public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
             return DownloadProblem.notFound();
         }
         return ResponseEntity.badRequest().body(problem(HttpStatus.BAD_REQUEST, "Invalid request", request));
+    }
+
+    /** The database is unreachable or overloaded: a capacity problem the client can retry, not a defect. */
+    @ExceptionHandler({CannotGetJdbcConnectionException.class, TransientDataAccessException.class})
+    ResponseEntity<ProblemDetail> handleDatabaseUnavailable(Exception ex, HttpServletRequest request) {
+        log.warn("database unavailable: {}", ex.getClass().getSimpleName());
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .header(HttpHeaders.RETRY_AFTER, "5")
+                .body(problem(HttpStatus.SERVICE_UNAVAILABLE, "Try again shortly", request));
     }
 
     /**

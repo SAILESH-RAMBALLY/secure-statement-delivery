@@ -5,3 +5,5 @@ spring:
     password: ${SPRING_DATASOURCE_PASSWORD:statements}
     hikari:
       maximum-pool-size: 10
+      # Fail fast when the database is down rather than holding a request thread for 30 seconds.
+      connection-timeout: 3000

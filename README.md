@@ -23,6 +23,9 @@ docker run --rm -p 127.0.0.1:8080:8080 -v statements-data:/data secure-statement
 
 Then open http://localhost:8080/swagger-ui.html.
 
+If port 8080 is taken, map a different one and tell the service, so the links it hands out point at the
+right address: `-p 127.0.0.1:9090:8080 -e APP_PUBLIC_BASE_URL=http://localhost:9090`.
+
 Out of the box the image runs in a self-contained demo mode. It uses an embedded H2 database and stores files
 on the `/data` volume, so nothing else needs to be installed. It also seeds five sample statements for two
 customers, `C-1001` and `C-2002`, and switches on a small development endpoint that hands out login tokens.
@@ -35,12 +38,17 @@ docker compose up --build
 ```
 
 Compose starts PostgreSQL first and waits until it's healthy before starting the app. It works without any
-extra configuration. If you want to use your own encryption key, set it before starting:
+extra configuration. To use your own encryption key, or a port other than 8080, set them before starting:
 
 ```bash
-export APP_CRYPTO_KEK=$(openssl rand -base64 32)
+export APP_CRYPTO_KEK=$(openssl rand -base64 32)   # optional
+export APP_PORT=9090                               # optional, defaults to 8080
 docker compose up --build
 ```
+
+Both demo runs use a built-in development key when `APP_CRYPTO_KEK` isn't set, and say so loudly in the log.
+That's fine for trying it out. Keep the same key across restarts, though, or the existing statements can't
+be decrypted.
 
 If you have JDK 21 installed you can also run it without Docker:
 `./mvnw spring-boot:run -Dspring-boot.run.profiles=h2,dev,demo`.
@@ -76,7 +84,7 @@ scripts/smoke.sh http://other:8080  # or anywhere else
 You need JDK 21. Docker is only needed for the PostgreSQL integration tests.
 
 ```bash
-./mvnw test              # 324 unit, slice and end-to-end tests on H2, no Docker needed
+./mvnw test              # 335 unit, slice and end-to-end tests on H2, no Docker needed
 ./mvnw verify            # adds 27 PostgreSQL integration tests and the coverage check
 ./mvnw verify -DskipITs  # the full build without Docker
 ```
@@ -84,7 +92,9 @@ You need JDK 21. Docker is only needed for the PostgreSQL integration tests.
 Test reports end up in `target/surefire-reports` and `target/failsafe-reports`, and the coverage report in
 `target/site/jacoco/index.html`. The build fails if coverage drops below 90% of lines and 85% of branches
 in the domain and application code, or 80% of lines overall. Right now the domain and application code is at
-about 97% of lines and 96% of branches, and the whole code base at 96% and 93%.
+about 98% of lines and 97% of branches, and everything else at about 98% and 94%. Spring configuration
+classes and the response DTOs are left out of the count. The check uses the unit and slice tests, not the
+PostgreSQL integration tests.
 
 The GitHub Actions workflow runs `./mvnw verify` and builds the image. It then runs the smoke script against
 the image on its own (with a read-only filesystem and no Linux capabilities) and against the compose stack on
@@ -95,17 +105,20 @@ PostgreSQL, and checks that the image refuses to start in production mode when n
 | Endpoint | Who can call it | What it does |
 |---|---|---|
 | `POST /api/admin/statements` | admins | Upload a statement PDF for a customer. |
-| `GET /api/statements` | any logged-in customer | List your own statements, newest first. |
+| `GET /api/statements` | customers (and admins, for their own) | List your own statements, newest first. |
 | `POST /api/statements/{id}/links` | the statement's owner | Create a download link. |
 | `GET /api/statements/{id}/links` | the owner or an admin | See each link's status and download count. |
 | `DELETE /api/links/{linkId}` | the owner or an admin | Revoke a link. Doing it twice is fine. |
 | `GET /download/{token}` | anyone with the link | Download the PDF. |
 | `POST /dev/token` | anyone, dev mode only | Get a login token for testing. |
 | `/actuator/health` | anyone | Health check, used by Docker. |
-| `/actuator/prometheus` | admins | Metrics. |
+| `/actuator/metrics`, `/actuator/prometheus` | admins | Metrics. Only Prometheus is exposed in production. |
 
 When something isn't yours, the API says it doesn't exist rather than saying you aren't allowed. That way you
 can't use the API to find out whether someone else's statement or link exists.
+
+`HEAD` on a download link always returns 404 and never counts as a download. Mail scanners and download
+managers often check a link with `HEAD` first, and that shouldn't use up a single-use link.
 
 ## How the code is organised
 
@@ -122,8 +135,10 @@ src/main/java/dev/rambally/statements
 
 The domain and application packages have no Spring in them at all. They don't know whether statements live
 on disk or in S3, or whether the database is H2 or PostgreSQL. They only see interfaces such as
-`StatementRepository`, `StatementStorage` and `KeyProvider`. The adapters implement those interfaces, and
-`UseCaseConfig` is the one place that decides which implementation goes where.
+`StatementRepository`, `StatementStorage` and `KeyProvider`. The adapters implement those interfaces. All the
+wiring lives in the `bootstrap` package: `AdapterConfig` picks the storage, key, token and notification
+implementations, the two JDBC repositories are found by component scanning, and `UseCaseConfig` builds the
+use cases from whatever is there.
 
 I didn't want this to be a convention people have to remember, so `HexagonalArchitectureTest` checks it on
 every build. If someone imports Spring into the domain, or makes a controller call a service class directly
@@ -134,8 +149,8 @@ service with six use cases that felt like a lot of build ceremony, and the archi
 guarantee more cheaply. If the service grew into several areas I'd split it then.
 
 Every outbound interface (storage, database, keys, audit, notifications) already has at least two
-implementations, an in-memory one for tests and a real one. So swapping file storage for S3, or the local key for a cloud key service, means
-writing one new class and changing one line of configuration.
+implementations, an in-memory one for tests and a real one. So swapping file storage for S3, or the local
+key for a cloud key service, means writing one new class and changing one line of configuration.
 
 ## Design decisions
 
@@ -186,15 +201,15 @@ UPDATE download_link
 ```
 
 If it updates one row, the download goes ahead. If it updates none, someone else got there first. The
-database's row lock takes care of the rest. A test fires 64 threads at the same link at once, on both H2 and PostgreSQL, and checks that only one
-succeeds. Another does the same over HTTP.
+database's row lock takes care of the rest. A test fires 64 threads at the same link at once, on both H2 and
+PostgreSQL, and checks that only one succeeds. Another does the same over HTTP.
 
 ### Decrypt first, then use up the link
 
-The service reads and decrypts the file before it uses up the link. If the
-file is missing or the decryption key is wrong, that's the bank's fault, and it shouldn't cost the customer
-their one download. The downside is that in a race several requests might decrypt the file and then all but
-one lose. Statements are capped at 10 MB, so that wasted work is small.
+The service reads and decrypts the file before it uses up the link. If the file is missing or the
+decryption key is wrong, that's the bank's fault, and it shouldn't cost the customer their one download.
+The downside is that in a race several requests might decrypt the file and then all but one lose.
+Statements are capped at 10 MB, so that wasted work is small.
 
 ### Not streaming the download
 
@@ -222,8 +237,9 @@ without the check failing. The file's check leaves out the master key's id; only
 is bound to it. That means you can rotate the master key by re-encrypting those small keys, without touching
 any files. A test covers this.
 
-Locally, if no master key is set, the service falls back to a built-in development key and prints a large
-warning. In production it refuses to start with that key, or with no key at all.
+With the `dev` profile on, if no master key is set, the service falls back to a built-in development key and
+prints a large warning. Without `dev` it refuses to start without a key, and in production it also refuses
+the development key itself.
 
 ### Security configuration
 
@@ -240,9 +256,9 @@ revoke links but can't create a download link for a customer, because that would
 password to the file.
 
 Production startup is guarded. If the service starts with the `prod` profile and finds the development key,
-no key, an `http` address instead of `https`, an H2 database, the demo data switched on, Swagger switched
-on, no token audience, or no trusted load balancer, it refuses to start. It lists everything that's wrong in one message, before it has touched the
-database.
+no key, an `http` address instead of `https`, anything other than a PostgreSQL database, the demo data
+switched on, Swagger switched on, no token audience, or no trusted load balancer, it refuses to start. It
+lists everything that's wrong in one message, before it has touched the database.
 
 ### Where links point, and how customers get them
 
@@ -256,9 +272,11 @@ an email or SMS, without touching the rest of the code.
 
 ## How I used TDD
 
-I built this test-first, one thin slice of functionality at a time. Each slice went red, green, refactor: a failing test for the
-behaviour I wanted, just enough code to pass it, then a clean-up with the tests still green. The git history shows this: almost every change is a pair of commits, a `test:`
-commit with the failing tests and then a `feat:` or `fix:` commit that makes them pass.
+I built this test-first, one thin slice of functionality at a time. Each slice went red, green, refactor: a
+failing test for the behaviour I wanted, just enough code to pass it, then a clean-up with the tests still
+green. The git history shows this. Almost every change is a pair of commits, a `test:` commit with the
+failing tests and then a `feat:` or `fix:` commit that makes them pass. A few small late fixes went in as a
+single commit with their test.
 
 I worked through the slices in this order:
 
@@ -299,33 +317,38 @@ The main settings. All of them have defaults that work locally.
 |---|---|---|
 | `SPRING_PROFILES_ACTIVE` | `h2,dev,demo` in the image | Which mode to run in. |
 | `APP_DATA_DIR` | `/data` in the image | Where the H2 database and the encrypted files go. |
-| `APP_PUBLIC_BASE_URL` | `http://localhost:8080` | The address used in download links. Must be https in production. |
+| `APP_PUBLIC_BASE_URL` | `http://localhost:8080` | The address used in download links. Change it if you change the port. Must be https in production. |
+| `APP_PORT` | `8080` | Compose only: the port on your machine. |
 | `APP_CRYPTO_KEK` | not set (dev key) | The master key, as base64 of 32 random bytes. Required in production. |
 | `APP_CRYPTO_KEK_ID` | `local-kek-v1` | A name for the master key, stored with each statement to support rotation. |
-| `APP_JWT_ISSUER_URI` | not set | The identity provider. Production only, and required there. |
+| `APP_JWT_ISSUER_URI` | not set | The identity provider. Production only, and required there (or a JWK set URI instead). |
 | `APP_JWT_AUDIENCE` | not set | The audience every login token must carry. Production only, and required there. |
 | `SERVER_TOMCAT_REMOTEIP_INTERNAL_PROXIES` | not set | Production only, and required there: a pattern matching the load balancer's addresses. Forwarded headers from anyone else are ignored. |
 | `APP_LINK_TTL` | `PT24H` | How long a link lasts, between 1 minute and 30 days. |
 | `APP_LINK_MAX_DOWNLOADS` | `1` | How many times a link can be used, between 1 and 10. |
 | `APP_DOWNLOAD_MAX_CONCURRENT` | `16` | How many downloads can be in progress at once. |
 
-The modes are `h2` or `postgres` for the database, `dev` for the token endpoint and Swagger, `demo` for the
-sample data, and `prod`. A production run would look like `SPRING_PROFILES_ACTIVE=postgres,prod`, with the
-master key coming from a secrets manager, TLS handled by a load balancer in front, and the identity provider
-settings filled in.
+The modes are `h2` or `postgres` for the database, `dev` for the token endpoint and the development key,
+`demo` for the sample data, and `prod`. Swagger is on in every mode except `prod`. A production run would
+look like `SPRING_PROFILES_ACTIVE=postgres,prod`, with the master key coming from a secrets manager, TLS
+handled by a load balancer in front, and the identity provider settings filled in.
 
 ## What I'd do next
 
 Things I left out to keep to the brief:
 
 - An S3 storage adapter and a cloud key-management adapter. The interfaces are already there.
-- Sending the link by email or SMS instead of logging it.
+- Sending the link by email or SMS. For now the customer gets the link in the API response, and the
+  `NotificationPort` implementation only logs that one was sent.
+- Deleting statements, a retention policy, and a clean-up job for old links and audit rows.
 - Proper master key rotation. The data model supports it, but the key provider only holds one key, so
   changing `APP_CRYPTO_KEK_ID` or the key today would make existing statements unreadable. It needs a list of
   retired keys plus a job that re-encrypts the per-statement keys.
 - Chunked encryption for very large statements.
 - Rate limiting at the load balancer. I didn't add it inside the service, because 256-bit tokens can't
   realistically be guessed anyway.
+- A health check that tells a slow database from a dead one. Today an unreachable database gives a 503
+  after three seconds, and the readiness probe covers the database and the storage folder.
 - Pinning the Docker base images to exact digests and scanning them for vulnerabilities in CI. The GitHub
   actions are already pinned, and Dependabot is set up to keep everything current.
 

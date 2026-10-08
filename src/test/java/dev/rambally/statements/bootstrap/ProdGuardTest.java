@@ -1,6 +1,7 @@
 package dev.rambally.statements.bootstrap;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
@@ -142,7 +143,18 @@ class ProdGuardTest {
         env.setActiveProfiles("dev");
         env.setProperty("app.crypto.kek", LocalKekKeyProvider.DEV_KEK_BASE64);
 
-        new ProdGuard().postProcessEnvironment(env, null);
+        assertThatCode(() -> new ProdGuard().postProcessEnvironment(env, null)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void fails_when_no_datasource_is_configured_because_an_in_memory_database_would_be_used() {
+        MockEnvironment blank = validProd();
+        blank.setProperty("spring.datasource.url", "");
+        assertThat(ProdGuard.check(blank)).anySatisfy(p -> assertThat(p).contains("no datasource"));
+
+        MockEnvironment other = validProd();
+        other.setProperty("spring.datasource.url", "jdbc:mysql://db/statements");
+        assertThat(ProdGuard.check(other)).anySatisfy(p -> assertThat(p).contains("not PostgreSQL"));
     }
 
     @Test
