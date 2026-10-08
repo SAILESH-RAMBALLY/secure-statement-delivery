@@ -274,9 +274,8 @@ an email or SMS, without touching the rest of the code.
 
 I built this test-first, one thin slice of functionality at a time. Each slice went red, green, refactor: a
 failing test for the behaviour I wanted, just enough code to pass it, then a clean-up with the tests still
-green. The git history shows this. Almost every change is a pair of commits, a `test:` commit with the
-failing tests and then a `feat:` or `fix:` commit that makes them pass. A few small late fixes went in as a
-single commit with their test.
+green. Each slice is one commit in the history, with its tests and its code together, and the build passes
+at every commit, so you can check out any point in the history and run it.
 
 I worked through the slices in this order:
 
