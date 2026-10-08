@@ -11,7 +11,7 @@ issues **secure, time-limited, single-use download links** to customers.
 - Links are 256-bit capability tokens; only their SHA-256 is stored. Atomic single-use via one conditional `UPDATE`, proven by 64-thread races on H2 and PostgreSQL.
 - Every download failure is one byte-identical 404; the real reason lives in an append-only audit table.
 - JWT resource server with a fail-closed default chain; a prod guard refuses to start with any development artefact active.
-- Built test-first: 270+ fast tests without Docker, plus PostgreSQL integration tests via Testcontainers.
+- Built test-first: 305 fast tests without Docker, plus 27 PostgreSQL integration tests via Testcontainers; 96% line coverage.
 
 ## Quick start
 
@@ -40,7 +40,7 @@ Without Docker, with JDK 21: `./mvnw spring-boot:run -Dspring-boot.run.profiles=
 
 1. `POST /dev/token` with `{"subject":"C-1001","roles":["CUSTOMER"]}`; paste the token into Swagger's **Authorize** button.
 2. `GET /api/statements` lists the seeded statements. `POST /api/statements/{statementId}/links` issues a link; copy the `url`.
-3. Download it: `curl -OJ "<url>"` saves `statement-1234567890-2026-09.pdf`.
+3. Download it: `curl -OJ "<url>"` saves `statement-7890-2026-09.pdf` (file names carry only the last four account digits).
 4. Download it again: `curl -i "<url>"` returns a constant `404 Statement not available`. The link was single-use.
 5. `GET /api/statements/{statementId}/links` shows the link as `EXHAUSTED`. `DELETE /api/links/{linkId}` revokes a link.
 6. To upload your own PDF, mint `{"subject":"ops-admin","roles":["ADMIN"]}` and `POST /api/admin/statements`
@@ -48,7 +48,7 @@ Without Docker, with JDK 21: `./mvnw spring-boot:run -Dspring-boot.run.profiles=
 
 The audit trail is in the `download_audit` table: `LINK_ISSUED`, `SUCCESS`, `EXHAUSTED`, `LINK_REVOKED`, `REVOKED`,
 `UNKNOWN_TOKEN`, and so on. The app log shows delivery with the token redacted:
-`Download link <id> for customer C-1001 delivered to http://localhost:8080/download/[redacted]`.
+`Download link <id> delivered to http://localhost:8080/download/[redacted]`. Neither the token nor the customer id is logged.
 
 `scripts/smoke.sh [base-url]` drives this whole flow against a running instance and checks every step.
 
@@ -112,7 +112,7 @@ services are constructed only in bootstrap; no field injection.
 | Tampered or swapped ciphertext | GCM tag verified before the first byte; AAD binds statement id and format | `AesGcmEnvelopeCipherTest` tamper and swap cases |
 | Token leaking via logs or metrics | Redacted `toString`, redacting notifier (no customer ids either), templated `uri` tag, no access log | `EndToEndH2Test` (scans captured logs and every meter tag, with positive controls) |
 | Token leaking via error bodies | `instance` fixed to `/api` or `/download`; details are reason phrases | `ApiExceptionHandlerTest`, `ServerErrorHygieneTest` |
-| Forged `Host` header | Links built from `APP_PUBLIC_BASE_URL`, forwarded headers ignored | `PublicBaseUrlTest`, `IssueDownloadLinkServiceTest` |
+| Forged `Host` header | Links built from `APP_PUBLIC_BASE_URL`, never from `Host`; in prod `X-Forwarded-*` is trusted only from the proxy, for the audit client IP and HSTS | `PublicBaseUrlTest`, `IssueDownloadLinkServiceTest` |
 | Horizontal access (IDOR) | Identity from the JWT subject only; ownership checked in services; 404 for not-yours; admins cannot mint customer links | `StatementControllerTest`, `IssueDownloadLinkServiceTest`, `RevokeDownloadLinkServiceTest` |
 | Token minted for another service | Audience required and validated in every profile; `ProdGuard` refuses to start without one | `JwtNegativeHttpTest`, `ProdGuardTest` |
 | Misattributed admin actions | Issue and revoke audit rows carry `actor_id` separately from the customer | `RevokeDownloadLinkServiceTest`, `JdbcAuditLogTest` |
