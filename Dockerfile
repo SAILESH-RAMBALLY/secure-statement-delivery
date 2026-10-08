@@ -16,7 +16,7 @@ RUN ./mvnw -B -q -DskipTests package \
  && java -Djarmode=tools -jar target/*.jar extract --layers --launcher --destination extracted
 
 # ---------- runtime stage ----------
-FROM eclipse-temurin:21-jre-alpine
+FROM eclipse-temurin:25-jre-alpine
 LABEL org.opencontainers.image.title="secure-statement-delivery" \
       org.opencontainers.image.version="1.0.4"
 RUN addgroup -S app && adduser -S -u 10001 -G app app \
