@@ -22,7 +22,7 @@
     <springdoc.version>3.1.1</springdoc.version>
     <archunit.version>1.5.1</archunit.version>
     <openpdf.version>3.0.5</openpdf.version>
-    <jacoco.version>0.8.15</jacoco.version>
+    <jacoco.version>0.8.16</jacoco.version>
     <enforcer.version>3.6.3</enforcer.version>
     <!-- Coverage gate; haltOnFailure is flipped to true in the quality-gate slice. -->
     <jacoco.haltOnFailure>true</jacoco.haltOnFailure>
